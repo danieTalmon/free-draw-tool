@@ -1,0 +1,5 @@
+export enum EntityLayers {
+  FREE_DRAW_SHAPES = 'FREE_DRAW_SHAPES',
+  ENTITIES = 'ENTITIES',
+  WAYPOINTS = 'WAYPOINTS',
+}

@@ -1,0 +1,40 @@
+.styleInputWrapper {
+  display: flex;
+  flex-direction: column;
+  color: #cbdbef;
+}
+.style-input-panel {
+  background: #282b37;
+}
+
+.style-input-panel--colors {
+  display: block;
+}
+
+.cdk-overlay-container .cdk-overlay-backdrop {
+  z-index: 1000 !important;
+}
+
+.cdk-overlay-container .cdk-overlay-pane {
+  z-index: 1001 !important;
+}
+.matSelectBaseStyle {
+  display: flex;
+  width: 90px;
+  height: 40px;
+  background: #474e60;
+  border: 1px solid #8398b2;
+  align-content: center;
+  border-radius: 8px;
+
+  .mat-select-trigger {
+    height: 100%;
+  }
+  .mat-select-value {
+    text-align: center;
+  }
+}
+.style-input-option {
+  background: #282b37;
+  text-align: center;
+}

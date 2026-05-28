@@ -1,0 +1,3 @@
+export const INIT_POLYGON_POINTS = 3;
+export const CENTER_DRAG_HANDLE_SIZE = 18;
+export const INVISIBLE_DRAG_HANDLE_ALPHA = 0.001;

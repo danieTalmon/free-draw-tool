@@ -1,0 +1,47 @@
+.context-menu {
+  position: fixed;
+  background: #2d3142;
+  border: 1px solid #4a5568;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  min-width: 180px;
+  z-index: 10000;
+  padding: 4px 0;
+
+  .menu-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    cursor: pointer;
+    color: #e2e8f0;
+    font-size: 14px;
+    transition: background-color 0.15s;
+
+    &:hover {
+      background: #4a5568;
+    }
+
+    &.delete {
+      color: #fc8181;
+
+      &:hover {
+        background: rgba(252, 129, 129, 0.2);
+      }
+    }
+
+    .icon {
+      margin-right: 10px;
+      font-size: 16px;
+    }
+
+    .label {
+      flex: 1;
+    }
+  }
+
+  .menu-divider {
+    height: 1px;
+    background: #4a5568;
+    margin: 4px 0;
+  }
+}

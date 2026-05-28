@@ -1,0 +1,7 @@
+export enum MapOperationsEnum {
+  DRAW_NONE = 'DRAW_NONE',
+  DRAW_CIRCLE = 'DRAW_CIRCLE',
+  DRAW_TEXT = 'DRAW_TEXT',
+  DRAW_POLYLINE = 'DRAW_POLYLINE',
+  DRAW_POLYGON = 'DRAW_POLYGON',
+}

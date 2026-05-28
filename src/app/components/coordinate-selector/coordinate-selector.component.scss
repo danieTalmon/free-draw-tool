@@ -1,0 +1,32 @@
+.coordinateWrapper {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  padding: 5px;
+
+  .coordinateInput {
+    display: flex;
+    flex-direction: column;
+
+    label {
+      color: #cbdbef;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    input {
+      width: 120px;
+      height: 30px;
+      background: #474e60;
+      border: 1px solid #8398b2;
+      border-radius: 4px;
+      color: #cbdbef;
+      padding: 0 8px;
+
+      &:focus {
+        outline: none;
+        border-color: #71a2ff;
+      }
+    }
+  }
+}

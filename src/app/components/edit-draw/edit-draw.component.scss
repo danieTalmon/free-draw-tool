@@ -1,0 +1,238 @@
+:host {
+  pointer-events: none;
+}
+
+.editShapeOverlay {
+  width: min(380px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  display: flex;
+  background: transparent;
+  pointer-events: none;
+
+  .editShapeWrapper {
+    border: 1px solid #282b37;
+    margin: 0;
+    border-radius: 10px;
+    overflow: hidden;
+    width: 100%;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    pointer-events: none;
+
+    .header {
+      background: #8698bc;
+      height: 50px;
+      text-align: center;
+      padding-left: 10px;
+      color: #282b37;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: x-large;
+      .image {
+        width: 4%;
+        :hover {
+          cursor: pointer;
+        }
+      }
+    }
+
+    .inputs {
+      background: #60677f;
+      display: flex;
+      width: 100%;
+      flex-direction: column;
+      height: auto;
+
+      .row {
+        display: flex;
+        flex-direction: column;
+        width: 95%;
+        margin: auto;
+        padding: 20px;
+        gap: 16px;
+        .content {
+          width: 100%;
+          &.shapeStyle {
+            width: 100%;
+          }
+          .sectionHeader {
+            color: #cbdbef;
+            font-size: larger;
+            font-weight: bold;
+            margin-bottom: 15px;
+            padding-left: 5px;
+          }
+        }
+        hr {
+          &.column {
+            display: none;
+          }
+        }
+        &.types {
+          width: 100%;
+          margin: 0;
+          justify-content: space-between;
+        }
+        .group {
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          justify-content: space-between;
+        }
+
+        .radius-field {
+          width: 120px;
+        }
+
+        .field {
+          display: flex;
+          flex-direction: column;
+          padding: 5px;
+          height: 100%;
+          span {
+            &.unChangeable {
+              height: 42px;
+              margin: auto;
+              display: flex;
+              align-items: center;
+            }
+          }
+
+          .coordsWrapper {
+            display: flex;
+            justify-content: space-evenly;
+            align-items: center;
+          }
+
+          input {
+            padding-left: 5px;
+          }
+        }
+      }
+    }
+
+    .styleInputs {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .buttonsWrapper {
+      height: 70px;
+      background: #768199;
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+
+      .error-message {
+        color: #ff6b6b;
+        background: rgba(255, 107, 107, 0.1);
+        padding: 5px 15px;
+        margin: 5px 15px 0;
+        border-radius: 4px;
+        font-size: 14px;
+        text-align: center;
+      }
+
+      .buttons {
+        width: 98%;
+        align-self: center;
+        display: flex;
+        justify-content: flex-end;
+        flex: 1;
+        align-items: center;
+
+        button {
+          margin: 10px;
+
+          &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+
+          &.cancel {
+            background: transparent;
+            border: 1px solid white;
+            color: white;
+            font-size: larger;
+          }
+
+          &.close {
+            background: transparent;
+            border: 1px solid white;
+            color: white;
+            font-size: larger;
+          }
+
+          &.save {
+            background: #71a2ff;
+            border: 1px solid #71a2ff;
+            color: #282b37;
+            font-size: larger;
+          }
+
+          &.delete {
+            background: #ff4d4d;
+            border: 1px solid #ff4d4d;
+            color: white;
+            font-size: larger;
+            margin-right: auto;
+          }
+        }
+      }
+    }
+  }
+
+  .editShapeWrapper button,
+  .editShapeWrapper input,
+  .editShapeWrapper select,
+  .editShapeWrapper img,
+  .editShapeWrapper app-style-input,
+  .editShapeWrapper app-edit-draw-points,
+  .editShapeWrapper app-coordinate-selector {
+    pointer-events: auto;
+  }
+
+  hr {
+    border-color: #000000;
+    width: 95%;
+    opacity: 0.2;
+  }
+
+  ::ng-deep input {
+    background: #474e60;
+    border-color: #8398b2;
+  }
+  select {
+    background: #474e60;
+    border-color: #8398b2;
+    option {
+      text-align: start;
+      &.altitude {
+        text-align: center;
+      }
+    }
+  }
+
+  .inputHeaderColor {
+    color: #cbdbef;
+  }
+
+  ::ng-deep button {
+    &.iconic {
+      &.default {
+        &.button {
+          background: transparent;
+          border-color: #bac2d3;
+        }
+      }
+    }
+  }
+}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

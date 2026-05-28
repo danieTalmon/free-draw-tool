@@ -1,0 +1,25 @@
+<div
+  class="context-menu"
+  *ngIf="visible && shape"
+  [style.left.px]="x"
+  [style.top.px]="y"
+  (click)="onMenuClick($event)"
+>
+  <div
+    class="menu-item"
+    (click)="onEdit($event)"
+    data-test-id="context-menu-edit"
+  >
+    <span class="icon">✏️</span>
+    <span class="label">Open Property Form</span>
+  </div>
+  <div class="menu-divider"></div>
+  <div
+    class="menu-item delete"
+    (click)="onDelete($event)"
+    data-test-id="context-menu-delete"
+  >
+    <span class="icon">🗑️</span>
+    <span class="label">Delete</span>
+  </div>
+</div>

@@ -1,0 +1,72 @@
+<div class="map-container">
+  <!-- Drawing Toolbar -->
+  <div class="draw-toolbar" *ngIf="isEditMode">
+    <button
+      class="draw-btn"
+      [class.active]="currentDrawType === MapOperationsEnum.DRAW_TEXT"
+      (click)="startDrawing(MapOperationsEnum.DRAW_TEXT)"
+      title="Draw Text"
+      data-test-id="draw-text-button"
+    >
+      T
+    </button>
+    <button
+      class="draw-btn"
+      [class.active]="currentDrawType === MapOperationsEnum.DRAW_POLYLINE"
+      (click)="startDrawing(MapOperationsEnum.DRAW_POLYLINE)"
+      title="Draw Line"
+      data-test-id="draw-line-button"
+    >
+      /
+    </button>
+    <button
+      class="draw-btn"
+      [class.active]="currentDrawType === MapOperationsEnum.DRAW_CIRCLE"
+      (click)="startDrawing(MapOperationsEnum.DRAW_CIRCLE)"
+      title="Draw Circle"
+      data-test-id="draw-circle-button"
+    >
+      ○
+    </button>
+    <button
+      class="draw-btn"
+      [class.active]="currentDrawType === MapOperationsEnum.DRAW_POLYGON"
+      (click)="startDrawing(MapOperationsEnum.DRAW_POLYGON)"
+      title="Draw Polygon"
+      data-test-id="draw-polygon-button"
+    >
+      △
+    </button>
+  </div>
+
+  <!-- Edit Mode Toggle -->
+  <div class="mode-toggle">
+    <button
+      class="mode-btn"
+      [class.active]="isEditMode"
+      (click)="toggleEditMode()"
+      [title]="isEditMode ? 'Exit Edit Mode' : 'Enter Edit Mode'"
+      data-test-id="edit-mode-toggle"
+    >
+      {{ isEditMode ? "🔓" : "🔒" }}
+    </button>
+  </div>
+
+  <!-- Cesium Map Container -->
+  <div id="cesiumContainer" #cesiumContainer></div>
+
+  <!-- Edit Form Overlay -->
+  <div class="edit-form-overlay" *ngIf="showEditForm && isEditMode">
+    <app-edit-draw></app-edit-draw>
+  </div>
+
+  <!-- Context Menu for Saved Shapes -->
+  <app-shape-context-menu
+    [x]="contextMenuX"
+    [y]="contextMenuY"
+    [visible]="contextMenuVisible"
+    [shape]="contextMenuShape"
+    (action)="onContextMenuAction($event)"
+    (close)="closeContextMenu()"
+  ></app-shape-context-menu>
+</div>

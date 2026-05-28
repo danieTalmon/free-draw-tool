@@ -1,0 +1,77 @@
+.polygonTable {
+  border: 0.125rem solid #191d26;
+
+  .header {
+    height: 1.875rem;
+    background: #4e5466;
+    color: #cbdbef;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0.625rem;
+  }
+
+  .locations {
+    background: #747e99;
+    overflow: auto;
+    height: 10rem;
+
+    .point-row {
+      display: flex;
+      align-items: center;
+      padding: 0.25rem 0.5rem;
+      border-bottom: 0.0625rem solid #60677f;
+
+      .point-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+        margin-left: 0.5rem;
+        flex-shrink: 0;
+      }
+
+      .point-action-btn {
+        width: 1.625rem;
+        height: 1.5rem;
+        border: 0.125rem solid #b7bfce;
+        border-radius: 0.25rem;
+        background: transparent;
+        color: #d0d6e3;
+        font-size: 1.125rem;
+        font-weight: 800;
+        line-height: 1;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+
+        &:hover {
+          background: rgba(216, 221, 232, 0.24);
+          border-color: #c4cbd9;
+        }
+
+        &:active {
+          background: rgba(197, 204, 218, 0.34);
+        }
+      }
+    }
+  }
+}
+
+.point-label {
+  display: block;
+  color: #cbdbef;
+  font-size: 0.75rem;
+  margin-bottom: 0.25rem;
+  font-weight: 500;
+  min-width: 3.75rem;
+}
+
+.no-points {
+  color: #a0a8b8;
+  font-style: italic;
+  padding: 0.625rem;
+  text-align: center;
+  font-size: 0.8125rem;
+}

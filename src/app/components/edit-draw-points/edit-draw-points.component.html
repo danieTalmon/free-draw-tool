@@ -1,0 +1,95 @@
+<ng-container [ngSwitch]="shapeEnum">
+  <ng-container *ngSwitchCase="mapOperations.DRAW_CIRCLE">
+    <div formGroupName="0" *ngIf="editDrawPointsFormArray.length > 0">
+      <span class="point-label">Center</span>
+      <app-coordinate-selector
+        formGroupName="coordinates"
+        [format]="'geo'"
+      ></app-coordinate-selector>
+    </div>
+    <div class="no-points" *ngIf="editDrawPointsFormArray.length === 0">
+      Click on the map to set center point
+    </div>
+  </ng-container>
+
+  <ng-container *ngSwitchCase="mapOperations.DRAW_POLYLINE">
+    <div formGroupName="0" *ngIf="editDrawPointsFormArray.length > 0">
+      <span class="point-label">Start Point</span>
+      <app-coordinate-selector
+        formGroupName="coordinates"
+        [format]="'geo'"
+      ></app-coordinate-selector>
+    </div>
+    <div formGroupName="1" *ngIf="editDrawPointsFormArray.length > 1">
+      <span class="point-label">End Point</span>
+      <app-coordinate-selector
+        formGroupName="coordinates"
+        [format]="'geo'"
+      ></app-coordinate-selector>
+    </div>
+    <div class="no-points" *ngIf="editDrawPointsFormArray.length === 0">
+      Click on the map to set points
+    </div>
+  </ng-container>
+
+  <ng-container *ngSwitchCase="mapOperations.DRAW_POLYGON">
+    <div class="polygonTable">
+      <div class="header">
+        <span>Polygon Points</span>
+      </div>
+      <div class="locations" *ngIf="editDrawPointsFormArray.length > 0">
+        <div
+          *ngFor="let point of editDrawPointsFormArray.controls; let i = index"
+          [formGroupName]="i"
+          class="point-row"
+        >
+          <span class="point-label">Point {{ i + 1 }}</span>
+          <app-coordinate-selector
+            formGroupName="coordinates"
+            [format]="'geo'"
+          ></app-coordinate-selector>
+          <div class="point-actions">
+            <button
+              type="button"
+              class="point-action-btn"
+              *ngIf="canAddPoint"
+              (click)="insertPointAfter(i)"
+              [attr.aria-label]="'Insert point after point ' + (i + 1)"
+              title="Insert Point After"
+              [attr.data-test-id]="'insert-point-' + i"
+            >
+              +
+            </button>
+            <button
+              type="button"
+              class="point-action-btn"
+              *ngIf="canRemovePoint"
+              (click)="removePoint(i)"
+              [attr.aria-label]="'Remove point ' + (i + 1)"
+              title="Remove Point"
+              [attr.data-test-id]="'remove-point-' + i"
+            >
+              -
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="no-points" *ngIf="editDrawPointsFormArray.length === 0">
+        Click on the map to add points
+      </div>
+    </div>
+  </ng-container>
+
+  <ng-container *ngSwitchCase="mapOperations.DRAW_TEXT">
+    <div formGroupName="0" *ngIf="editDrawPointsFormArray.length > 0">
+      <span class="point-label">Position</span>
+      <app-coordinate-selector
+        formGroupName="coordinates"
+        [format]="'geo'"
+      ></app-coordinate-selector>
+    </div>
+    <div class="no-points" *ngIf="editDrawPointsFormArray.length === 0">
+      Click on the map to set text position
+    </div>
+  </ng-container>
+</ng-container>

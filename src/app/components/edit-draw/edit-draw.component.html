@@ -1,0 +1,129 @@
+<div class="editShapeOverlay">
+  <div class="editShapeWrapper">
+    <div class="header">
+      <span>Edit Shape: {{ shapeTypeTitle }}</span>
+      <span class="image">
+        <img
+          src="assets/x.svg"
+          width="15px"
+          height="15px"
+          (click)="cancel()"
+          data-test-id="edit-draw-close-button"
+        />
+      </span>
+    </div>
+
+    <form [formGroup]="shapeForm">
+      <div class="inputs">
+        <div class="row" style="justify-content: space-between">
+          <div class="group">
+            <div class="field">
+              <span class="inputHeaderColor">Name</span>
+              <input
+                formControlName="name"
+                type="text"
+                data-test-id="shape-name-input"
+              />
+            </div>
+
+            <div class="field">
+              <span class="inputHeaderColor">ID</span>
+              <span class="unChangeable">
+                {{ shapeForm.get("id")?.value }}
+              </span>
+            </div>
+          </div>
+          <div class="field">
+            <span class="inputHeaderColor">Source</span>
+            <span class="unChangeable">AGS</span>
+          </div>
+        </div>
+        <hr />
+
+        <div class="row">
+          <!-- Coordinates and Points Section -->
+          <div class="content">
+            <app-edit-draw-points
+              formArrayName="points"
+              [shapeEnum]="drawType"
+            ></app-edit-draw-points>
+          </div>
+          <hr class="column" />
+          <!-- Style Section -->
+          <div class="content shapeStyle">
+            <div class="styleInputsWrapper">
+              <div class="styleInputs">
+                <app-style-input
+                  *ngIf="
+                    [
+                      mapDrawOptions.DRAW_POLYGON,
+                      mapDrawOptions.DRAW_POLYLINE,
+                    ].includes(drawType)
+                  "
+                  formControlName="lineType"
+                  [config]="lineTypeInput"
+                ></app-style-input>
+                <app-style-input
+                  *ngIf="
+                    [
+                      mapDrawOptions.DRAW_POLYGON,
+                      mapDrawOptions.DRAW_POLYLINE,
+                    ].includes(drawType)
+                  "
+                  formControlName="lineWidth"
+                  [config]="lineWidthInput"
+                ></app-style-input>
+                <app-style-input
+                  formControlName="lineColor"
+                  [config]="colorInput"
+                ></app-style-input>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          class="row"
+          *ngIf="drawType === mapDrawOptions.DRAW_CIRCLE"
+          style="justify-content: flex-end"
+        >
+          <div class="group">
+            <div class="field radius-field">
+              <span class="inputHeaderColor">Radius</span>
+              <input
+                formControlName="radius"
+                type="number"
+                data-test-id="radius-input"
+              />
+              <span>Meters</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="buttonsWrapper">
+        <div class="error-message" *ngIf="saveError">
+          {{ saveError }}
+        </div>
+        <div class="buttons">
+          <button
+            class="iconic long cancel"
+            (click)="cancel()"
+            [disabled]="isSaving"
+            data-test-id="edit-draw-cancel-button"
+          >
+            Cancel
+          </button>
+          <button
+            class="iconic long save"
+            (click)="save()"
+            [disabled]="!canSave"
+            data-test-id="edit-draw-save-button"
+          >
+            {{ isSaving ? "Saving..." : "Save" }}
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>

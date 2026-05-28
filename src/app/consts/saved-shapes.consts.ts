@@ -1,0 +1,4 @@
+export const INVISIBLE_HIT_ALPHA = 0.001;
+export const MIN_HIT_POLYLINE_WIDTH = 18;
+export const TEXT_HIT_PIXEL_SIZE = 28;
+export const SAVED_SHAPE_SCREEN_HIT_TOLERANCE_PX = 12;
