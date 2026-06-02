@@ -11,15 +11,15 @@
       'style-select-' + config.inputName.toLowerCase().replace(' ', '-')
     "
   >
-    <mat-select-trigger style="height: 100%">
-      <span style="text-align: center" [innerHTML]="selected.img"></span>
+    <mat-select-trigger class="style-input-trigger">
+      <span class="style-input-icon" [innerHTML]="selected.img"></span>
     </mat-select-trigger>
     <mat-option
       [value]="opt.optionValue"
       class="style-input-option"
       *ngFor="let opt of config.options"
     >
-      <span style="text-align: center" [innerHTML]="opt.img"></span>
+      <span class="style-input-icon" [innerHTML]="opt.img"></span>
     </mat-option>
   </mat-select>
 </div>

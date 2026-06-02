@@ -30,20 +30,40 @@ This file tracks requirement violations against the canonical instructions in [p
 
 ### B-016 - Typing coordinates in form does not update map in new-shape create mode
 
-- Status: in-analysis
+- Status: closed
 - Severity: high
 - Violated Requirement IDs: 2.3, 3.5
 - Current Behavior: When creating a new shape (without clicking the map first), typing coordinates into the latitude/longitude inputs in the form does not update the temporary shape entity on the map. Only saving the shape causes the map to reflect the typed coordinates.
 - Expected Behavior: Typing into coordinate inputs (and radius for circle) should immediately update the temporary shape on the map, provided the minimum point requirements are met: at least 1 fully-filled coordinate point for circle and text; 2 for polyline; 3 for polygon.
 - Affected Scenarios: New shape creation only (existing shape edit via context menu works because positions are pre-loaded from map). Radius-only typing works when center was already set via map click.
-- Proposed Fix Direction: TBD — pending expert discussion
+- Proposed Fix Direction: Move `filter(() => !this._updatingFromMap)` before `debounceTime(100)` in `pointsChanges$` pipeline. Remove redundant filter from draw-tool subscriber.
 - Candidate Implementation Locations:
-  - src/app/services/draw-tool.service.ts (replacePositionsFromForm, bindFormChanges)
   - src/app/services/edit-shape-facade.service.ts (pointsChanges$ pipeline)
+  - src/app/services/draw-tool.service.ts (bindFormChanges)
 - Proof Required:
   - Unit test: typing coordinates updates entity positions for all shape types
   - E2E test: B-016 typing in coordinate inputs updates the map immediately for circle/polyline/polygon/text (new shape flow)
-- Notes: Radius typing works when center set via map click (CallbackProperty on radius is correct). Bug is isolated to coordinate input → map update path in new-shape flow.
+
+#### Root Cause
+
+The `updatingFromMap` flag guard was positioned AFTER `debounceTime(100)` in the `pointsChanges$` RxJS pipeline. Since `_updatingFromMap` is set/reset synchronously within the same call stack, by the time the async filter evaluates (100ms later), the flag is always `false`. The guard was effectively dead code.
+
+#### Fix Implementation (2026-05-28)
+
+**Changes:**
+
+1. Added `filter(() => !this._updatingFromMap)` BEFORE `debounceTime(100)` in `pointsChanges$` (edit-shape-facade.service.ts)
+2. Removed redundant `filter(() => !this.editShapeFacadeService.updatingFromMap)` from draw-tool.service.ts `bindFormChanges()`
+3. Added `filter` import to edit-shape-facade.service.ts
+
+**Proof:**
+
+- Unit tests: 336/336 pass (3 new tests for pointsChanges$ filter behavior)
+- E2E tests: 4 new tests for Bug 16 (circle, text, polyline, polygon) all pass
+- Full E2E regression suite: 26/26 pass
+
+- Final Decision (closed / reopened): closed
+- Notes: ~3 lines changed total. Guard ownership moved from consumer (draw-tool) to producer (facade). Expert panel approved approach.
 
 ## Phase 4 Prioritization
 

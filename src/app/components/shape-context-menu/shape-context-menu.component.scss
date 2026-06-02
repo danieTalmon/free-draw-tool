@@ -4,14 +4,14 @@
   border: 1px solid #4a5568;
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  min-width: 180px;
+  min-width: 11.25rem;
   z-index: 10000;
-  padding: 4px 0;
+  padding: 0.25rem 0;
 
   .menu-item {
     display: flex;
     align-items: center;
-    padding: 10px 16px;
+    padding: 0.625rem 1rem;
     cursor: pointer;
     color: #e2e8f0;
     font-size: 14px;
@@ -30,7 +30,7 @@
     }
 
     .icon {
-      margin-right: 10px;
+      margin-right: 0.625rem;
       font-size: 16px;
     }
 
@@ -40,8 +40,8 @@
   }
 
   .menu-divider {
-    height: 1px;
+    height: 0.0625rem;
     background: #4a5568;
-    margin: 4px 0;
+    margin: 0.25rem 0;
   }
 }

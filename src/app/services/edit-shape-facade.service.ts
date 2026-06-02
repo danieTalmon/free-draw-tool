@@ -12,6 +12,7 @@ import { tap } from 'rxjs/operators';
 import {
   debounceTime,
   distinctUntilChanged,
+  filter,
   map,
   shareReplay,
 } from 'rxjs/operators';
@@ -143,6 +144,7 @@ export class EditShapeFacadeService implements OnDestroy {
       );
 
     this.pointsChanges$ = this.pointsArray.valueChanges.pipe(
+      filter(() => !this._updatingFromMap),
       debounceTime(100),
       map((points) =>
         points.map((point) => ({

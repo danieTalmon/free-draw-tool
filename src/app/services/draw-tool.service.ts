@@ -961,10 +961,7 @@ export class DrawToolService implements OnDestroy {
       });
 
     this.editShapeFacadeService.pointsChanges$
-      .pipe(
-        takeUntil(this.destroy$),
-        filter(() => !this.editShapeFacadeService.updatingFromMap),
-      )
+      .pipe(takeUntil(this.destroy$))
       .subscribe((points) => {
         this.replacePositionsFromForm(points);
       });

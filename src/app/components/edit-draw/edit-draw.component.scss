@@ -3,8 +3,8 @@
 }
 
 .editShapeOverlay {
-  width: min(380px, calc(100vw - 40px));
-  max-height: calc(100vh - 40px);
+  width: min(23.75rem, calc(100vw - 2.5rem));
+  max-height: calc(100vh - 2.5rem);
   display: flex;
   background: transparent;
   pointer-events: none;
@@ -15,15 +15,15 @@
     border-radius: 10px;
     overflow: hidden;
     width: 100%;
-    max-height: calc(100vh - 40px);
+    max-height: calc(100vh - 2.5rem);
     overflow-y: auto;
     pointer-events: none;
 
     .header {
       background: #8698bc;
-      height: 50px;
+      height: 3.125rem;
       text-align: center;
-      padding-left: 10px;
+      padding-left: 0.625rem;
       color: #282b37;
       display: flex;
       align-items: center;
@@ -49,7 +49,7 @@
         flex-direction: column;
         width: 95%;
         margin: auto;
-        padding: 20px;
+        padding: 1.25rem;
         gap: 16px;
         .content {
           width: 100%;
@@ -60,8 +60,8 @@
             color: #cbdbef;
             font-size: larger;
             font-weight: bold;
-            margin-bottom: 15px;
-            padding-left: 5px;
+            margin-bottom: 0.9375rem;
+            padding-left: 0.3125rem;
           }
         }
         hr {
@@ -83,17 +83,17 @@
         }
 
         .radius-field {
-          width: 120px;
+          width: calc(7.5rem * 5 / 8);
         }
 
         .field {
           display: flex;
           flex-direction: column;
-          padding: 5px;
+          padding: 0.3125rem;
           height: 100%;
           span {
             &.unChangeable {
-              height: 42px;
+              height: 2.625rem;
               margin: auto;
               display: flex;
               align-items: center;
@@ -107,7 +107,22 @@
           }
 
           input {
-            padding-left: 5px;
+            padding-left: 0.3125rem;
+            width: 62.5%;
+            height: 1.875rem;
+            background: #474e60;
+            border: 1px solid #8398b2;
+            border-radius: 4px;
+            color: #d6e0ef;
+            font-size: 13px;
+            font-weight: 500;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+
+            &:focus {
+              outline: none;
+              border-color: #71a2ff;
+              box-shadow: 0 0 0 1px rgba(113, 162, 255, 0.25);
+            }
           }
         }
       }
@@ -120,7 +135,7 @@
     }
 
     .buttonsWrapper {
-      height: 70px;
+      height: 4.375rem;
       background: #768199;
       display: flex;
       flex-direction: column;
@@ -129,8 +144,8 @@
       .error-message {
         color: #ff6b6b;
         background: rgba(255, 107, 107, 0.1);
-        padding: 5px 15px;
-        margin: 5px 15px 0;
+        padding: 0.3125rem 0.9375rem;
+        margin: 0.3125rem 0.9375rem 0;
         border-radius: 4px;
         font-size: 14px;
         text-align: center;
@@ -145,7 +160,7 @@
         align-items: center;
 
         button {
-          margin: 10px;
+          margin: 0.625rem;
 
           &:disabled {
             opacity: 0.5;
@@ -204,6 +219,10 @@
   ::ng-deep input {
     background: #474e60;
     border-color: #8398b2;
+    color: #d6e0ef;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: "Segoe UI", Tahoma, sans-serif;
   }
   select {
     background: #474e60;

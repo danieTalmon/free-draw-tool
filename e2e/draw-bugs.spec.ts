@@ -1643,6 +1643,134 @@ test.describe('Draw Tool Bugs', () => {
     expect(result?.contextState.contextMenuVisible).toBeTruthy();
     expect(result?.contextState.contextMenuShapeId).toBe('saved-thin-polygon');
   });
+
+  test('Bug 16: Typing coordinates in form should update map entity for new circle', async ({
+    page,
+  }) => {
+    // Select circle tool
+    await page.locator('[data-test-id="draw-circle-button"]').click();
+    await page.waitForTimeout(500);
+
+    // Verify form is open and positions are empty
+    const initialPositions = await page.evaluate(() => {
+      const mapCmp = (window as any).ng.getComponent(
+        document.querySelector('app-map'),
+      );
+      return mapCmp.drawToolService.positions.length;
+    });
+    expect(initialPositions).toBe(0);
+
+    // Type coordinates directly into form inputs (no map click)
+    const latInput = page.locator('[data-test-id="latitude-input"]').first();
+    const lonInput = page.locator('[data-test-id="longitude-input"]').first();
+    const radiusInput = page.locator('[data-test-id="radius-input"]');
+
+    await latInput.fill('32.1');
+    await lonInput.fill('34.8');
+    await radiusInput.fill('500');
+
+    // Wait for debounce (100ms) + rendering
+    await page.waitForTimeout(300);
+
+    // Verify positions updated on the draw tool
+    const result = await page.evaluate(() => {
+      const mapCmp = (window as any).ng.getComponent(
+        document.querySelector('app-map'),
+      );
+      const drawTool = mapCmp.drawToolService;
+      return {
+        positionsLength: drawTool.positions.length,
+        radius: drawTool.radius,
+      };
+    });
+
+    expect(result.positionsLength).toBe(1);
+    expect(result.radius).toBe(500);
+  });
+
+  test('Bug 16: Typing coordinates in form should update map entity for new text', async ({
+    page,
+  }) => {
+    // Select text tool
+    await page.locator('[data-test-id="draw-text-button"]').click();
+    await page.waitForTimeout(500);
+
+    // Type coordinates
+    const latInput = page.locator('[data-test-id="latitude-input"]').first();
+    const lonInput = page.locator('[data-test-id="longitude-input"]').first();
+
+    await latInput.fill('31.5');
+    await lonInput.fill('35.2');
+
+    await page.waitForTimeout(300);
+
+    const positionsLength = await page.evaluate(() => {
+      const mapCmp = (window as any).ng.getComponent(
+        document.querySelector('app-map'),
+      );
+      return mapCmp.drawToolService.positions.length;
+    });
+
+    expect(positionsLength).toBe(1);
+  });
+
+  test('Bug 16: Typing coordinates in form should update map entity for new polyline', async ({
+    page,
+  }) => {
+    // Select line tool
+    await page.locator('[data-test-id="draw-line-button"]').click();
+    await page.waitForTimeout(500);
+
+    // Type both points
+    const latInputs = page.locator('[data-test-id="latitude-input"]');
+    const lonInputs = page.locator('[data-test-id="longitude-input"]');
+
+    await latInputs.nth(0).fill('32.0');
+    await lonInputs.nth(0).fill('34.5');
+    await latInputs.nth(1).fill('32.5');
+    await lonInputs.nth(1).fill('35.0');
+
+    await page.waitForTimeout(300);
+
+    const positionsLength = await page.evaluate(() => {
+      const mapCmp = (window as any).ng.getComponent(
+        document.querySelector('app-map'),
+      );
+      return mapCmp.drawToolService.positions.length;
+    });
+
+    expect(positionsLength).toBe(2);
+  });
+
+  test('Bug 16: Typing coordinates in form should update map entity for new polygon', async ({
+    page,
+  }) => {
+    // Select polygon tool
+    await page.locator('[data-test-id="draw-polygon-button"]').click();
+    await page.waitForTimeout(500);
+
+    // Type 3 points
+    const latInputs = page.locator('[data-test-id="latitude-input"]');
+    const lonInputs = page.locator('[data-test-id="longitude-input"]');
+
+    await latInputs.nth(0).fill('32.0');
+    await lonInputs.nth(0).fill('34.0');
+    await latInputs.nth(1).fill('32.5');
+    await lonInputs.nth(1).fill('34.5');
+    await latInputs.nth(2).fill('32.0');
+    await lonInputs.nth(2).fill('35.0');
+
+    await page.waitForTimeout(300);
+
+    const positionsLength = await page.evaluate(() => {
+      const mapCmp = (window as any).ng.getComponent(
+        document.querySelector('app-map'),
+      );
+      return mapCmp.drawToolService.positions.length;
+    });
+
+    expect(positionsLength).toBe(3);
+  });
 });
 
 test.describe('Debug Console Output', () => {

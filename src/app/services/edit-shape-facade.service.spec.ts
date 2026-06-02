@@ -534,4 +534,74 @@ describe('EditShapeFacadeService', () => {
       expect(service.updatingFromMap).toBeFalse();
     });
   });
+
+  describe('pointsChanges$ filter (B-016)', () => {
+    it('should NOT emit when patchPointsFromMapLocations is called', fakeAsync(() => {
+      // Initialize a point so the form array has content
+      service.patchPointsFromMapLocations([
+        {
+          latitude: { degrees: 0 },
+          longitude: { degrees: 0 },
+          altitude: { feet: 0 },
+        },
+      ]);
+      tick(200);
+
+      const emissions: any[] = [];
+      service.pointsChanges$.subscribe((val) => emissions.push(val));
+
+      // Map-driven update should be filtered
+      service.patchPointsFromMapLocations([
+        {
+          latitude: { degrees: 32.0 },
+          longitude: { degrees: 34.0 },
+          altitude: { feet: 0 },
+        },
+      ]);
+      tick(200);
+
+      expect(emissions.length).toBe(0);
+    }));
+
+    it('should NOT emit when setPointsFromMapLocations is called', fakeAsync(() => {
+      const emissions: any[] = [];
+      service.pointsChanges$.subscribe((val) => emissions.push(val));
+
+      service.setPointsFromMapLocations([
+        {
+          latitude: { degrees: 32.0 },
+          longitude: { degrees: 34.0 },
+          altitude: { feet: 0 },
+        },
+      ]);
+      tick(200);
+
+      expect(emissions.length).toBe(0);
+    }));
+
+    it('should emit when user types into form directly', fakeAsync(() => {
+      // Initialize form with a point
+      service.patchPointsFromMapLocations([
+        {
+          latitude: { degrees: 0 },
+          longitude: { degrees: 0 },
+          altitude: { feet: 0 },
+        },
+      ]);
+      tick(200);
+
+      const emissions: any[] = [];
+      service.pointsChanges$.subscribe((val) => emissions.push(val));
+
+      // Simulate user typing (direct form patch, not via map methods)
+      service.pointsArray.at(0).patchValue({
+        coordinates: { latitude: 32.1, longitude: 34.8 },
+      });
+      tick(200);
+
+      expect(emissions.length).toBe(1);
+      expect(emissions[0][0].latitude.degrees).toBe(32.1);
+      expect(emissions[0][0].longitude.degrees).toBe(34.8);
+    }));
+  });
 });
