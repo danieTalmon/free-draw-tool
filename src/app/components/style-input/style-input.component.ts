@@ -38,7 +38,9 @@ import {
     },
   ],
 })
-export class StyleInputComponent implements OnInit, ControlValueAccessor {
+export class StyleInputComponent
+  implements OnInit, ControlValueAccessor
+{
   selected: DrawInputStyleOption = {
     img: '',
     optionImageName: '',

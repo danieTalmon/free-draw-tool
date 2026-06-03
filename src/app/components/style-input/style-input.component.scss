@@ -11,20 +11,46 @@
   }
 }
 .style-input-panel {
-  background: #282b37;
+  background: #282b37 !important;
 }
 
 .style-input-panel--colors {
-  display: block;
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 8.25rem !important;
+  gap: 0;
+  padding: 0 !important;
+  background: #282b37 !important;
+  max-height: none;
 }
 
-.cdk-overlay-container .cdk-overlay-backdrop {
-  z-index: 1000 !important;
+.style-input-panel--colors .style-input-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: #282b37 !important;
+  min-height: 1.5rem !important;
+  height: 1.5rem !important;
+  line-height: 1 !important;
+  --mdc-list-list-item-one-line-container-height: 1.5rem;
 }
 
-.cdk-overlay-container .cdk-overlay-pane {
-  z-index: 1001 !important;
+.style-input-panel--colors .style-input-option .mdc-list-item__primary-text {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
+
+.style-input-panel--colors .style-input-option .style-input-icon,
+.style-input-panel--colors .style-input-option .style-input-icon img {
+  pointer-events: none;
+}
+
 .matSelectBaseStyle {
   display: inline-flex;
   width: fit-content;

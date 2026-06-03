@@ -30,20 +30,6 @@ app-map {
   height: 100%;
 }
 
-// Ensure CDK overlay renders above everything
-.cdk-overlay-container {
-  z-index: 10000 !important;
-  pointer-events: auto !important;
-}
-
-.cdk-overlay-backdrop {
-  z-index: 9999 !important;
-}
-
-.cdk-overlay-pane {
-  z-index: 10001 !important;
-}
-
 // Style mat-select dropdown panel
 .mat-select-panel {
   background: #282b37 !important;
