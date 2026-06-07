@@ -1,6 +1,6 @@
 # Rewrite Playwright E2E Tests in Python
 
-> Workflow status: **TASK-01 ✅  TASK-02 ✅ — TASK-03 next**
+> Workflow status: **TASK-01 ✅ TASK-02 ✅ — TASK-03 next**
 > Date opened: 2026-06-03
 > Requestor: Ariel
 
