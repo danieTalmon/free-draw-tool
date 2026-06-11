@@ -14,7 +14,11 @@ describe('sampleCircleBoundary', () => {
 
     expect(ring.length).toBe(33);
     expect(
-      Cartesian3.equalsEpsilon(ring[0], ring[ring.length - 1], CesiumMath.EPSILON6),
+      Cartesian3.equalsEpsilon(
+        ring[0],
+        ring[ring.length - 1],
+        CesiumMath.EPSILON6,
+      ),
     ).toBe(true);
   });
 

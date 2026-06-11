@@ -111,9 +111,7 @@ describe('SavedShapesService', () => {
       expect(entity?.ellipse).toBeUndefined();
       expect(entity?.polyline).toBeTruthy();
       expect(entity?.polyline?.material).toBeTruthy();
-      expect(entity?.polyline?.width?.getValue(sampleTime)).toBe(
-        dto.lineWidth,
-      );
+      expect(entity?.polyline?.width?.getValue(sampleTime)).toBe(dto.lineWidth);
     });
 
     it('should add a polyline shape', () => {
