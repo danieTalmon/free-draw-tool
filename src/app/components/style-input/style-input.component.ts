@@ -49,6 +49,7 @@ export class StyleInputComponent
   @Input() config: DrawInput = { inputName: '', options: [] };
   @Input() replaceLineWithText = false;
   panelClass = 'style-input-panel';
+  isColorInput = false;
   selectedValue: DrawInputStyleOptionValue | null = null;
   disabled = false;
   private incomingValue: DrawInputStyleOptionValue | null = null;
@@ -93,6 +94,7 @@ export class StyleInputComponent
   }
 
   private syncConfigState(): void {
+    this.isColorInput = this.config.inputName === 'Line Color';
     this.panelClass =
       this.config.inputName === 'Line Color'
         ? 'style-input-panel style-input-panel--colors'

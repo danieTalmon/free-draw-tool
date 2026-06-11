@@ -5,6 +5,7 @@
     [(value)]="selectedValue"
     [disabled]="disabled"
     [classList]="['matSelectBaseStyle']"
+    [hideSingleSelectionIndicator]="isColorInput"
     [panelClass]="panelClass"
     (selectionChange)="onOptionSelected($event.value)"
     [attr.data-test-id]="

@@ -51,6 +51,24 @@
   pointer-events: none;
 }
 
+.style-input-panel--colors .style-input-option:hover,
+.style-input-panel--colors .style-input-option:focus,
+.style-input-panel--colors .style-input-option.mat-mdc-option-active,
+.style-input-panel--colors .style-input-option.mdc-list-item--selected {
+  background: #282b37 !important;
+}
+
+.style-input-panel--colors .style-input-option .mat-mdc-option-ripple,
+.style-input-panel--colors .style-input-option .mat-pseudo-checkbox {
+  display: none !important;
+}
+
+.style-input-panel--colors
+  .style-input-option.mdc-list-item--selected
+  .mdc-list-item__primary-text {
+  color: inherit !important;
+}
+
 .matSelectBaseStyle {
   display: inline-flex;
   width: fit-content;
