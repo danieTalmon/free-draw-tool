@@ -29,6 +29,7 @@ import {
 import {
   cartesian3ToMapLocation,
   mapLocationToCartesian3,
+  sampleCircleBoundary,
 } from '@helpers/cesium.helpers';
 
 interface DrawToolState {
@@ -722,6 +723,14 @@ export class DrawToolService implements OnDestroy {
     }
   }
 
+  private getCircleBoundaryPositions(): Cartesian3[] {
+    const center = this.positions[0];
+    if (!center || this.radius === undefined) {
+      return [];
+    }
+    return sampleCircleBoundary(center, this.radius);
+  }
+
   private getCenterDragHandle(color: Color) {
     return {
       pixelSize: CENTER_DRAG_HANDLE_SIZE,
@@ -755,17 +764,21 @@ export class DrawToolService implements OnDestroy {
             () => this.positions[0],
             false,
           ) as unknown as Cartesian3,
-          ellipse: {
+          polyline: {
             show: new CallbackProperty(
-              () => this.positions.length > 0 && this.radius !== undefined,
+              () =>
+                this.positions.length > 0 &&
+                this.radius !== undefined &&
+                this.radius > 0,
               false,
             ),
-            semiMajorAxis: new CallbackProperty(() => this.radius ?? 0, false),
-            semiMinorAxis: new CallbackProperty(() => this.radius ?? 0, false),
-            fill: false,
-            outline: true,
-            outlineColor: color,
-            outlineWidth: lineWidth,
+            positions: new CallbackProperty(
+              () => this.getCircleBoundaryPositions(),
+              false,
+            ) as unknown as Cartesian3[],
+            width: lineWidth,
+            material: this.getPolylineMaterial(),
+            clampToGround: true,
           },
           point: {
             show: new CallbackProperty(() => this.positions.length > 0, false),

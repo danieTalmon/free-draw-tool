@@ -1771,6 +1771,73 @@ test.describe('Draw Tool Bugs', () => {
 
     expect(positionsLength).toBe(3);
   });
+
+  test('Circle: line type and width controls are editable and affect the entity', async ({
+    page,
+  }) => {
+    // Select circle tool (3rd button) and seed a drawable circle.
+    await page.locator('.draw-btn').nth(2).click();
+    await page.waitForTimeout(500);
+
+    await page.evaluate(() => {
+      const mapCmp = (window as any).ng.getComponent(
+        document.querySelector('app-map'),
+      );
+      const editCmp = (window as any).ng.getComponent(
+        document.querySelector('app-edit-draw'),
+      );
+      const facade = editCmp.shapeFormService;
+      const drawTool = mapCmp.drawToolService;
+
+      facade.shapeForm.patchValue({ radius: 500 }, { emitEvent: false });
+      facade.setPointsFromMapLocations([
+        {
+          latitude: { degrees: 32.0 },
+          longitude: { degrees: 34.0 },
+          altitude: { feet: 0 },
+        },
+      ]);
+      drawTool.loadPositionsFromForm();
+      drawTool.radius = 500;
+    });
+    await page.waitForTimeout(400);
+
+    // Line Type and Line Width controls must be visible for a circle.
+    await expect(
+      page.locator('app-style-input').filter({ hasText: 'Line Type' }),
+    ).toBeVisible();
+    await expect(
+      page.locator('app-style-input').filter({ hasText: 'Line Width' }),
+    ).toBeVisible();
+
+    // Changing the form style must rebuild the circle entity as a styled
+    // polyline (width applied, dash material for dotted/dashed).
+    const result = await page.evaluate(() => {
+      const editCmp = (window as any).ng.getComponent(
+        document.querySelector('app-edit-draw'),
+      );
+      const mapCmp = (window as any).ng.getComponent(
+        document.querySelector('app-map'),
+      );
+      const facade = editCmp.shapeFormService;
+      const drawTool = mapCmp.drawToolService;
+
+      facade.shapeForm.get('lineWidth')?.setValue(6);
+      facade.shapeForm.get('lineType')?.setValue('dashed');
+
+      return {
+        configWidth: drawTool.getStyleConfig().lineWidth,
+        configLineType: drawTool.getStyleConfig().lineType,
+        hasPolyline: !!drawTool.shapeEntity?.polyline,
+        hasEllipse: !!drawTool.shapeEntity?.ellipse,
+      };
+    });
+
+    expect(result.configWidth).toBe(6);
+    expect(result.configLineType).toBe('dashed');
+    expect(result.hasPolyline).toBe(true);
+    expect(result.hasEllipse).toBe(false);
+  });
 });
 
 test.describe('Debug Console Output', () => {

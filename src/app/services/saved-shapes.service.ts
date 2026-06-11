@@ -24,7 +24,10 @@ import {
   SAVED_SHAPE_SCREEN_HIT_TOLERANCE_PX,
   TEXT_HIT_PIXEL_SIZE,
 } from '@consts/saved-shapes.consts';
-import { mapLocationToCartesian3 } from '@helpers/cesium.helpers';
+import {
+  mapLocationToCartesian3,
+  sampleCircleBoundary,
+} from '@helpers/cesium.helpers';
 
 @Injectable({
   providedIn: 'root',
@@ -289,13 +292,11 @@ export class SavedShapesService implements OnDestroy {
         return new Entity({
           ...entityOptions,
           position: positions[0],
-          ellipse: {
-            semiMajorAxis: dto.radius || 100,
-            semiMinorAxis: dto.radius || 100,
-            fill: false,
-            outline: true,
-            outlineColor: color,
-            outlineWidth: lineWidth,
+          polyline: {
+            positions: sampleCircleBoundary(positions[0], dto.radius || 100),
+            width: lineWidth,
+            material: this.getPolylineMaterial(dto.lineType, color),
+            clampToGround: true,
           },
         });
 

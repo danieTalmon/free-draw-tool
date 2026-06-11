@@ -97,21 +97,23 @@ describe('SavedShapesService', () => {
       const dto = createTestShapeDto({ shapeType: 'DRAW_CIRCLE' });
       const entity = service.addShape(dto);
       expect(entity).toBeTruthy();
-      expect(entity?.ellipse).toBeTruthy();
+      expect(entity?.polyline).toBeTruthy();
 
       const savedShape = service.getShapeById(dto.id!);
       expect(savedShape?.hitEntities?.length).toBe(1);
     });
 
-    it('should create circle with outline only (no fill)', () => {
+    it('should render circle outline as a styled polyline (no fill)', () => {
       const dto = createTestShapeDto({ shapeType: 'DRAW_CIRCLE' });
       const entity = service.addShape(dto);
       const sampleTime = JulianDate.now();
 
-      expect(entity?.ellipse).toBeTruthy();
-      expect(entity?.ellipse?.fill?.getValue(sampleTime)).toBe(false);
-      expect(entity?.ellipse?.outline?.getValue(sampleTime)).toBe(true);
-      expect(entity?.ellipse?.outlineColor).toBeTruthy();
+      expect(entity?.ellipse).toBeUndefined();
+      expect(entity?.polyline).toBeTruthy();
+      expect(entity?.polyline?.material).toBeTruthy();
+      expect(entity?.polyline?.width?.getValue(sampleTime)).toBe(
+        dto.lineWidth,
+      );
     });
 
     it('should add a polyline shape', () => {
