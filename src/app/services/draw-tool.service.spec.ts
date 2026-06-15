@@ -107,14 +107,13 @@ describe('DrawToolService', () => {
       expect(mockViewer.entities.add).toHaveBeenCalled();
     });
 
-    it('should create temporary circle with outline only (no fill)', () => {
+    it('should create temporary circle outline as a styled polyline (no fill)', () => {
       service.startDrawing(MapOperationsEnum.DRAW_CIRCLE);
       const addCall = mockViewer.entities.add.calls.mostRecent().args[0];
-      expect(addCall.ellipse).toBeTruthy();
-      expect(addCall.ellipse.fill).toBe(false);
-      expect(addCall.ellipse.outline).toBe(true);
-      expect(addCall.ellipse.outlineColor).toBeTruthy();
-      expect(addCall.ellipse.material).toBeUndefined();
+      expect(addCall.polyline).toBeTruthy();
+      expect(addCall.polyline.material).toBeTruthy();
+      expect(addCall.polyline.width).toBeTruthy();
+      expect(addCall.ellipse).toBeUndefined();
     });
 
     it('should start drawing polyline', () => {
@@ -486,7 +485,7 @@ describe('DrawToolService', () => {
 
       const latestEntityOptions =
         mockViewer.entities.add.calls.mostRecent().args[0];
-      expect(latestEntityOptions.ellipse.outlineWidth).toBe(6);
+      expect(latestEntityOptions.polyline.width).toBe(6);
       expect(service.getStyleConfig().lineWidth).toBe(6);
     }));
 
