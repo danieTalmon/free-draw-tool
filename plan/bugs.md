@@ -309,28 +309,217 @@ The `showAllShapes()` call in `toggleEditMode` can also be removed (or kept for 
 #### Bug Record
 
 - ID: B-017
-- Title: Saved shape disappears from map after CM edit open or shape-type switch
-- Status: ready-for-fix
+- Title: Single Cesium entity during editing — entity reuse instead of temp entity creation
+- Status: in-analysis
 - Severity: High
 - Violated Requirement IDs: 3.6, 3.10
-- Current Behavior: When a user opens any saved shape for editing via the context menu, `openShapeForEditing()` calls `savedShapesService.hideShape(dto.id)`. The shape then becomes permanently invisible within the current edit session under three conditions: (1) the user cancels the edit (presses X/Cancel while still in edit mode); (2) the user completes a save while remaining in edit mode (temp entity cleared but saved entity stays hidden); (3) the user selects a different shape-type button while the saved shape's edit form is open (`startDrawing` replaces the temp entity without restoring the saved shape). The only recovery path in all three cases is a full edit-mode toggle, which is non-obvious to users. Text shapes are most visibly broken because the temp entity that overlaps during editing provides no visual substitute after it is destroyed.
-- Expected Behavior: Saved shape entities must never be hidden during an edit session. The temp entity created by `DrawToolService` visually overlaps the saved entity during editing, which is acceptable. On any termination (cancel, save, type-switch, mode-exit), the saved entity remains visible without any restoration logic.
-- Affected Shape Types: All (text, circle, polyline, polygon). Text is most obvious.
-- Proposed Fix Direction: **Option D** — remove the `hideShape(dto.id)` call and its guard from `openShapeForEditing()` in `map.component.ts`. The saved entity is never hidden; therefore it never needs to be restored. The `DrawToolService` is **not** responsible for hiding saved shapes. No tracking field, no helper method, no new call sites.
+- Phase 1 fix applied (Option D — 2026-06-22): Removed `hideShape(dto.id)` from `openShapeForEditing`. Shapes no longer disappear on cancel or type-switch. Unit: 336/336. E2E: 3/3.
+- Phase 1 side-effect (new defect): `DrawToolService.createTemporaryEntity()` adds a NEW entity to `viewer.entities` on every `startDrawing()` call. The saved entity is still in the `FREE_DRAW_SHAPES` DataSource and is now never hidden. **Both entities are rendered simultaneously during editing.** For text: two overlapping labels. For circles: two concentric ellipses. For polylines/polygons: doubled lines. This is a class-A visual defect introduced by the Phase 1 fix.
+- Current Behavior: During any saved-shape edit session, the saved entity (DataSource, static properties) and the temp entity (viewer.entities, CallbackProperty-based) are visible simultaneously, creating visual duplication of every shape being edited.
+- Expected Behavior: Exactly ONE Cesium entity is visible per shape during editing. When the user opens a saved shape for editing, `DrawToolService.shapeEntity` should reference the saved entity directly (borrowed from the DataSource), not a newly-created temp entity. The saved entity's properties are converted to `CallbackProperty` for live editing. On cancel, the entity is restored to static properties from the original DTO. On save, it receives the new DTO values. No duplication at any point.
+- Affected Shape Types: All (text, circle, polyline, polygon).
+- Proposed Fix Direction: **Option E (voted 7/5 — see Phase 2 below)** — entity reuse with `isBorrowedEntity` pattern. `DrawToolService.startDrawing()` accepts an optional `existingEntity?: Entity` and `existingEntityDto?: ShapeDto`. When provided, `shapeEntity = existingEntity` (no new entity created), its properties are overridden to `CallbackProperty`, and on cancel `savedShapesService.updateShape(borrowedDto)` restores the entity from the original DTO.
 - Candidate Implementation Locations:
-  - `src/app/components/map/map.component.ts` — remove `hideShape` call from `openShapeForEditing` (~3 lines deleted)
-  - `src/app/services/saved-shapes.service.ts` — no changes
-  - `src/app/services/draw-tool.service.ts` — no changes
-- Proof Required:
-  - E2E (Playwright): `test_bug_text_shape_disappears_on_cm_open.py` must go from CONFIRMED FAILING to PASS (cancel path)
-  - E2E (Playwright): add test for shape-type-switch path — open saved shape, select a different draw type button, assert saved entity is still visible
-  - E2E (Playwright): add test for save-within-session path — open saved shape, save, assert saved entity is visible without toggling edit mode
-  - Full TS unit suite and full E2E regression suite must remain green
-- Playwright Proof: `e2e/test_bug_text_shape_disappears_on_cm_open.py` — **CONFIRMED FAILING** (cancel path)
+  - `src/app/services/draw-tool.service.ts` — `startDrawing` (borrow logic), `cleanup` (restore path), `clearTempEntityAfterSave` (clear borrow state), `createTemporaryEntity` (isBorrowedEntity guard), new `applyCallbackPropertiesToBorrowedEntity()`
+  - `src/app/components/map/map.component.ts` — `openShapeForEditing` (pass entity + dto to startDrawing)
+  - `src/app/services/saved-shapes.service.ts` — expose `getShapeById(id)` entity reference (likely already exists)
+- New Dependency: `DrawToolService` injects `SavedShapesService` (no circular dependency — SavedShapesService does not reference DrawToolService)
+- Proof Required (Phase 2):
+  - Unit: `viewer.entities.length` unchanged after `startDrawing(type, opts, entity)` — no duplicate added
+  - Unit: `drawToolService.shapeEntity === savedEntity` after borrow — correct entity reference
+  - Unit: after cancel, `savedShapesService.updateShape` called with original DTO — restore path confirmed
+  - Unit: `createTemporaryEntity` NOT called when `isBorrowedEntity` is true — guard confirmed
+  - E2E: open saved circle, drag during edit — no duplicate entity visible
+  - E2E: open saved text, cancel — entity visible with original text, no duplicate
+  - E2E: existing cancel-path and type-switch regression tests remain green
+  - Full TS unit suite + full E2E regression suite: green
+- Phase 1 E2E Proof (still valid): `e2e/test_bug_text_shape_disappears_on_cm_open.py` — 3/3 PASS (must remain green)
 
 #### Branch
 
 `fix/b-017-text-shape-disappears-after-cm-open`
+
+---
+
+### B-017 Phase 2 — Visual Duplication During Editing
+
+#### Problem Statement
+
+Option D removed `hideShape()` from `openShapeForEditing()`, eliminating shape disappearance across all exit paths. This exposed a secondary defect: `DrawToolService.createTemporaryEntity()` adds a new entity to `viewer.entities` on every `startDrawing()` call. The saved entity already lives in the `FREE_DRAW_SHAPES` DataSource and is now never hidden. Both entities are rendered simultaneously — a static saved entity underneath a live `CallbackProperty`-based temp entity. For text shapes, two overlapping labels are visible. For circles, two concentric ellipses appear. This is a class-A visual defect exposed by the Phase 1 fix.
+
+#### Phase 2 Vote Options
+
+| Option        | Short Description                                                                                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **C-revised** | Re-introduce `hideShape()` on open; wire `showShape()` to cancel, save-complete, type-switch, and mode-exit                                                         |
+| **E**         | Entity reuse — pass saved entity to `startDrawing()`; mutate its properties to `CallbackProperty`; restore on cancel via `savedShapesService.updateShape(savedDto)` |
+| **F**         | Option E approach but also hide the borrowed entity at start; on cancel, recreate from DTO; avoids property-restoration snapshot complexity                         |
+
+#### Phase 2 — Multi-Agent Panel Discussion
+
+**PM — User Perspective**
+
+> The user's mental model during editing is: _I am working on the shape that is already on the map._ Two overlapping entities during editing violates this model. Option E achieves exactly that — the map entity they see IS the entity being edited, no duplication, no flash on save or cancel. Option C-revised introduces a visual blank-period (entity hidden) and has already been ruled fragile by this team. Option F still hides the entity on open — regression risk.
+>
+> **Vote: E**
+
+**Frontend Expert — Implementation Perspective**
+
+> Property mutation on the borrowed entity requires overriding a bounded, well-known set of Cesium properties per shape type. The restore on cancel is cleanest via `savedShapesService.updateShape(borrowedDto)` — no per-property snapshot needed. The only critical guard needed is in `createTemporaryEntity()` (`if (this.isBorrowedEntity) return`) to prevent orphaning the borrowed entity when `updateStyle()` is called. Option C-revised requires 4 call sites and proved fragile before.
+>
+> **Vote: E**
+
+**Tester — Verifiability Perspective**
+
+> Option E creates a single, testable invariant: after `startDrawing(type, opts, entity)`, `viewer.entities.length` does not increase. The cancel-path invariant: entity is back to static properties via `updateShape`. Option C-revised requires separate tests for each exit path — any future undocumented exit path silently reopens the bug. Option E's exit-path coverage is structural, not enumerative.
+>
+> **Vote: E**
+
+**Code Reviewer — Risk Perspective**
+
+> Three concrete implementation traps that **must** be addressed:
+>
+> 1. **`viewer.entities.remove(borrowedEntity)` is a silent no-op** — `updateShape(borrowedDto)` is not optional; it is the ONLY restore mechanism.
+> 2. **`updateStyle()` → `createTemporaryEntity()`** — highest-risk path. Guard `createTemporaryEntity()` with `if (this.isBorrowedEntity) return` to prevent orphaning the borrowed entity and creating a duplicate.
+> 3. **`isBorrowedEntity` must be cleared BEFORE `createTemporaryEntity()` in `clearTempEntityAfterSave()`** — sequence: clear flag → create new temp entity.
+>
+> Option C-revised avoids all risks but is architecturally fragile. Option E's complexity is the better trade.
+>
+> **Vote: E**
+
+**Architect — System Perspective**
+
+> Option C-revised re-introduces the exact hide/show contract that Option D was voted to eliminate. Four call sites today; any future code path that ends an edit session without going through the restore function silently reopens the bug. Option F (hide + borrow) compounds the problem: it carries both C-revised fragility AND E complexity for the benefit of neither.
+>
+> Option E is the correct direction. The `isBorrowedEntity` boolean has a clear invariant: when true, `cleanup()` and `clearTempEntityAfterSave()` take an alternate, well-defined path. New injection: `DrawToolService` must inject `SavedShapesService` to call `updateShape()` on cancel. No circular dependency — `SavedShapesService` does not reference `DrawToolService`.
+>
+> **Vote: E (3 votes)**
+
+#### Phase 2 Vote Tally
+
+| Agent           | Votes | Vote             |
+| --------------- | ----- | ---------------- |
+| Architect       | 3     | E                |
+| PM              | 1     | E                |
+| Frontend Expert | 1     | E                |
+| Tester          | 1     | E                |
+| Code Reviewer   | 1     | E                |
+| **Total**       | **7** | **E — APPROVED** |
+
+#### Key Implementation Risks
+
+| Risk                                                                                              | Severity     | Mitigation                                                                     |
+| ------------------------------------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------ |
+| `viewer.entities.remove(borrowedEntity)` is a silent no-op — entity properties remain mutated     | **Critical** | Always call `savedShapesService.updateShape(borrowedDto)` in cleanup path      |
+| `updateStyle()` calls `createTemporaryEntity()` — orphans borrowed entity, creates duplicate      | **Critical** | Guard: `if (this.isBorrowedEntity) return` at top of `createTemporaryEntity()` |
+| `isBorrowedEntity` must be cleared BEFORE `createTemporaryEntity()` in `clearTempEntityAfterSave` | **High**     | Sequence: clear flag → create new temp entity                                  |
+| New injection: `SavedShapesService` into `DrawToolService`                                        | **Low**      | No circular dependency — verify with compilation                               |
+| `borrowedEntityDto` must be snapshot at borrow time, not lazily read                              | **Medium**   | Store DTO reference in `startDrawing()` call, not via facade later             |
+
+#### Option E — Step-by-Step Implementation Plan
+
+**Step 1 — New fields in `DrawToolService`**
+
+```typescript
+private isBorrowedEntity = false;
+private borrowedEntityDto: ShapeDto | null = null;
+```
+
+**Step 2 — Inject `SavedShapesService`**
+
+```typescript
+private readonly savedShapesService = inject(SavedShapesService);
+```
+
+**Step 3 — Update `StartDrawingOptions` interface**
+
+```typescript
+interface StartDrawingOptions {
+  preserveFormState?: boolean;
+  existingEntity?: Entity;
+  existingEntityDto?: ShapeDto;
+}
+```
+
+**Step 4 — Modify `startDrawing()`: restore previous borrow before starting, borrow new entity when provided**
+
+At the top of the cleanup block (before `this.shapeEntity = null`):
+
+```typescript
+if (this.isBorrowedEntity && this.borrowedEntityDto) {
+  this.savedShapesService.updateShape(this.borrowedEntityDto);
+  this.isBorrowedEntity = false;
+  this.borrowedEntityDto = null;
+}
+```
+
+After `syncStyleFromForm()`, replace `createTemporaryEntity(type)` with:
+
+```typescript
+if (options?.existingEntity && options?.existingEntityDto) {
+  this.shapeEntity = options.existingEntity;
+  this.borrowedEntityDto = options.existingEntityDto;
+  this.isBorrowedEntity = true;
+  this.applyCallbackPropertiesToBorrowedEntity(type);
+} else {
+  this.createTemporaryEntity(type);
+}
+```
+
+**Step 5 — Implement `applyCallbackPropertiesToBorrowedEntity(type)`**
+
+Override key properties to `CallbackProperty` per shape type (position, radius, label.text, polyline.positions).
+
+**Step 6 — Guard `createTemporaryEntity()`**
+
+```typescript
+private readonly createTemporaryEntity = (type: MapOperationsEnum): void => {
+  if (this.isBorrowedEntity) return; // entity reuse mode — do not create duplicate
+  // ...existing code...
+};
+```
+
+**Step 7 — Modify `cleanup()`: restore borrowed entity instead of removing**
+
+```typescript
+if (this.isBorrowedEntity && this.borrowedEntityDto) {
+  this.savedShapesService.updateShape(this.borrowedEntityDto);
+  this.isBorrowedEntity = false;
+  this.borrowedEntityDto = null;
+}
+// existing remove (safe no-op for DataSource entities)
+if (this.shapeEntity && this.viewer) {
+  this.viewer.entities.remove(this.shapeEntity);
+  this.shapeEntity = null;
+}
+```
+
+**Step 8 — Modify `clearTempEntityAfterSave()`**
+
+If `isBorrowedEntity`: on save the DTO was updated externally; clear borrow state and null the reference. Then proceed to recreate temp entity for next shape as normal.
+
+**Step 9 — Update `openShapeForEditing()` in `map.component.ts`**
+
+```typescript
+private openShapeForEditing(savedShape: SavedShapeEntity): void {
+  const dto = savedShape.shapeDto;
+  const drawType = shapeTypeToMapOperation(dto.shapeType);
+  const entity = dto.id
+    ? this.savedShapesService.getShapeById(dto.id)?.entity
+    : undefined;
+
+  this.currentDrawType = drawType;
+  this.drawToolService.startDrawing(drawType, {
+    preserveFormState: true,
+    existingEntity: entity ?? undefined,
+    existingEntityDto: entity && dto.id ? dto : undefined,
+  });
+  this.editShapeFacadeService.fromShapeDto(dto);
+  this.editShapeFacadeService.markAsSaved(dto);
+  this.editShapeFacadeService.setCurrentShapeType(drawType);
+  this.drawToolService.loadPositionsFromForm();
+}
+```
 
 ---
 

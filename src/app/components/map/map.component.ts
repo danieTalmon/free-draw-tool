@@ -336,11 +336,17 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     const dto = savedShape.shapeDto;
     const drawType = shapeTypeToMapOperation(dto.shapeType);
 
+    const existingEntity = dto.id
+      ? this.savedShapesService.getShapeById(dto.id)?.entity
+      : undefined;
+
     // Set the draw type to open the form
     this.currentDrawType = drawType;
-
-    // Start drawing mode first so handlers/entity are ready.
-    this.drawToolService.startDrawing(drawType, { preserveFormState: true });
+    this.drawToolService.startDrawing(drawType, {
+      preserveFormState: true,
+      existingEntity: existingEntity ?? undefined,
+      existingEntityDto: existingEntity && dto.id ? dto : undefined,
+    });
 
     // Load the shape data into the form
     this.editShapeFacadeService.fromShapeDto(dto);

@@ -2,6 +2,7 @@ import { Injectable, NgZone, OnDestroy, inject } from '@angular/core';
 import { OutlineType } from '@models/draw-event.model';
 import { EntityLayers } from '@models/map-entities-layers';
 import { DrawMapOption } from '@models/user-preferences';
+import { ShapeDto } from '@models/shape.model';
 import {
   CallbackProperty,
   Cartesian2,
@@ -21,6 +22,7 @@ import { MapOperationsEnum } from '@models/map-operations-enum';
 import { MapLocation } from '@models/location';
 import { ShapeDrawStyle } from '@models/shape-draw-style.model';
 import { EditShapeFacadeService } from '@services/edit-shape-facade.service';
+import { SavedShapesService } from '@services/saved-shapes.service';
 import {
   CENTER_DRAG_HANDLE_SIZE,
   INIT_POLYGON_POINTS,
@@ -41,6 +43,8 @@ interface DrawToolState {
 
 interface StartDrawingOptions {
   preserveFormState?: boolean;
+  existingEntity?: Entity;
+  existingEntityDto?: ShapeDto;
 }
 
 @Injectable({
@@ -48,6 +52,7 @@ interface StartDrawingOptions {
 })
 export class DrawToolService implements OnDestroy {
   private readonly editShapeFacadeService = inject(EditShapeFacadeService);
+  private readonly savedShapesService = inject(SavedShapesService);
   private readonly ngZone = inject(NgZone);
 
   private positions: Cartesian3[] = [];
@@ -103,6 +108,8 @@ export class DrawToolService implements OnDestroy {
   private vertexEntities: Entity[] = [];
   private draggedSavedShapeId: string | null = null;
   private polygonPreviewInsertAfterIndex: number | null = null;
+  private isBorrowedEntity = false;
+  private borrowedEntityDto: ShapeDto | null = null;
 
   constructor() {
     this.bindFormChanges();
@@ -212,6 +219,12 @@ export class DrawToolService implements OnDestroy {
       this.handler = null;
     }
 
+    if (this.isBorrowedEntity && this.borrowedEntityDto) {
+      this.savedShapesService.updateShape(this.borrowedEntityDto);
+      this.isBorrowedEntity = false;
+      this.borrowedEntityDto = null;
+    }
+
     // Cleanup previous drawing session
     if (this.shapeEntity != null) {
       this.viewer.entities.remove(this.shapeEntity);
@@ -250,8 +263,15 @@ export class DrawToolService implements OnDestroy {
     // Preserve current form style values when starting or resuming editing.
     this.syncStyleFromForm();
 
-    // Create entity once - positions will update via CallbackProperty
-    this.createTemporaryEntity(type);
+    // Borrow the existing saved entity (no new entity created) or create a fresh temp entity.
+    if (options?.existingEntity && options?.existingEntityDto) {
+      this.shapeEntity = options.existingEntity;
+      this.borrowedEntityDto = { ...options.existingEntityDto };
+      this.isBorrowedEntity = true;
+      this.applyCallbackPropertiesToBorrowedEntity(type);
+    } else {
+      this.createTemporaryEntity(type);
+    }
 
     this.setupMouseHandlers();
   };
@@ -268,11 +288,16 @@ export class DrawToolService implements OnDestroy {
   readonly clearTempEntityAfterSave = (): void => {
     if (!this.viewer) return;
 
-    // Remove temp entity
+    // Remove temp entity.
+    // For a borrowed entity the save handler already called savedShapesService.updateShape(),
+    // which removed the entity from the DataSource. viewer.entities.remove is a no-op here.
     if (this.shapeEntity) {
       this.viewer.entities.remove(this.shapeEntity);
       this.shapeEntity = null;
     }
+    // Clear borrow state so createTemporaryEntity runs normally for the next shape.
+    this.isBorrowedEntity = false;
+    this.borrowedEntityDto = null;
 
     // Clear vertex entities
     this.clearVertexEntities();
@@ -732,7 +757,82 @@ export class DrawToolService implements OnDestroy {
     };
   }
 
+  private readonly applyCallbackPropertiesToBorrowedEntity = (
+    type: MapOperationsEnum,
+  ): void => {
+    const entity = this.shapeEntity;
+    if (!entity) return;
+
+    switch (type) {
+      case MapOperationsEnum.DRAW_CIRCLE:
+        (entity as any).position = new CallbackProperty(
+          () => this.positions[0],
+          false,
+        );
+        if (entity.ellipse) {
+          entity.ellipse.show = new CallbackProperty(
+            () => this.positions.length > 0 && this.radius !== undefined,
+            false,
+          ) as any;
+          entity.ellipse.semiMajorAxis = new CallbackProperty(
+            () => this.radius ?? 0,
+            false,
+          ) as any;
+          entity.ellipse.semiMinorAxis = new CallbackProperty(
+            () => this.radius ?? 0,
+            false,
+          ) as any;
+        }
+        break;
+      case MapOperationsEnum.DRAW_TEXT:
+        (entity as any).position = new CallbackProperty(
+          () => this.positions[0],
+          false,
+        );
+        if (entity.label) {
+          entity.label.show = new CallbackProperty(
+            () => this.positions.length > 0,
+            false,
+          ) as any;
+          entity.label.text = new CallbackProperty(
+            () => this.shapeEditableConfig.textLabel || 'Text',
+            false,
+          ) as any;
+        }
+        break;
+      case MapOperationsEnum.DRAW_POLYLINE:
+        if (entity.polyline) {
+          entity.polyline.show = new CallbackProperty(
+            () => this.getDisplayPolylinePositions().length >= 2,
+            false,
+          ) as any;
+          entity.polyline.positions = new CallbackProperty(
+            () => this.getDisplayPolylinePositions(),
+            false,
+          ) as any;
+        }
+        break;
+      case MapOperationsEnum.DRAW_POLYGON:
+        if (entity.polyline) {
+          entity.polyline.show = new CallbackProperty(
+            () => this.getDisplayPolygonPositions().length >= 2,
+            false,
+          ) as any;
+          entity.polyline.positions = new CallbackProperty(
+            () => this.getDisplayPolygonPositions(),
+            false,
+          ) as any;
+        }
+        break;
+      default:
+        break;
+    }
+  };
+
   private readonly createTemporaryEntity = (type: MapOperationsEnum): void => {
+    // In borrowed-entity mode the saved entity IS shapeEntity — do not create a duplicate.
+    if (this.isBorrowedEntity) return;
+
     if (!this.viewer) return;
 
     // Remove existing entity if any
@@ -854,6 +954,14 @@ export class DrawToolService implements OnDestroy {
   };
 
   private readonly cleanup = (): void => {
+    // Restore a borrowed saved entity to its original static state on cancel.
+    if (this.isBorrowedEntity && this.borrowedEntityDto) {
+      this.savedShapesService.updateShape(this.borrowedEntityDto);
+      this.isBorrowedEntity = false;
+      this.borrowedEntityDto = null;
+    }
+
+    // viewer.entities.remove is a no-op for DataSource entities — safe to call unconditionally.
     if (this.shapeEntity && this.viewer) {
       this.viewer.entities.remove(this.shapeEntity);
       this.shapeEntity = null;
