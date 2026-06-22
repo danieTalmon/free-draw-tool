@@ -346,12 +346,12 @@ describe('MapComponent', () => {
   });
 
   describe('Open shape for editing', () => {
-    it('should hide the saved shape entity', () => {
+    it('should NOT hide the saved shape entity (B-017 Option D: entity stays visible during editing)', () => {
       const savedShape = createMockSavedShape();
       component.isEditMode = true;
       component['openShapeForEditing'](savedShape);
 
-      expect(savedShapesService.hideShape).toHaveBeenCalledWith('test-shape');
+      expect(savedShapesService.hideShape).not.toHaveBeenCalled();
     });
 
     it('should set draw type from shape', () => {

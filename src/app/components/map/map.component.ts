@@ -336,11 +336,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     const dto = savedShape.shapeDto;
     const drawType = shapeTypeToMapOperation(dto.shapeType);
 
-    // Hide the saved shape entity while editing (temp entity will be used)
-    if (dto.id) {
-      this.savedShapesService.hideShape(dto.id);
-    }
-
     // Set the draw type to open the form
     this.currentDrawType = drawType;
 

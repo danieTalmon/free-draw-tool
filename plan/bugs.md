@@ -65,6 +65,275 @@ The `updatingFromMap` flag guard was positioned AFTER `debounceTime(100)` in the
 - Final Decision (closed / reopened): closed
 - Notes: ~3 lines changed total. Guard ownership moved from consumer (draw-tool) to producer (facade). Expert panel approved approach.
 
+---
+
+### B-017 — Saved shape disappears from map after CM edit open or shape-type switch
+
+```
+╔══════════════════════════════════════════════════════════════╗
+║  📥 INTAKE — Work Item                                       ║
+╠══════════════════════════════════════════════════════════════╣
+║  Title:  Saved shape disappears after CM → Open or type-     ║
+║          switch during active edit session                   ║
+║  Type:          Bug                                          ║
+║  Requestor:     Ariel                                        ║
+║  Raw description: "When CM and open saved Text shape, the    ║
+║    shape disappears from the map. Also disappears when       ║
+║    choosing another shape type while editing."               ║
+║  Initial priority: High                                      ║
+╠══════════════════════════════════════════════════════════════╣
+║  👉 Is this worth breaking down further? yes                 ║
+╚══════════════════════════════════════════════════════════════╝
+```
+
+**PM intake note:** This is a data-loss-class visual bug. The user opens a shape to edit, decides to cancel (or switches to draw a new shape type), and the shape they started with is gone from the map — with no action the user can take to recover it short of toggling edit mode off and back on. For a text label tool that is used to annotate maps, invisibility of a saved label breaks the core usage loop and destroys user trust immediately. Worth fixing this sprint.
+
+---
+
+#### Phase 1 — Multi-Agent Planning Session
+
+##### Step 1.1 — Problem Statement
+
+**PM — User perspective:**
+
+A user right-clicks (context menu) a saved Text shape, selects "Open for editing", then changes their mind and presses Cancel (or the X button). After cancelling, the text label has vanished from the map entirely. The shape is still saved in the system but it is invisible. The only recovery path is to leave and re-enter edit mode — which is non-obvious and unacceptable UX. The user's mental model is: cancel = nothing changes. The actual behaviour is: cancel = your label disappears.
+
+This is not a text-only problem. Circle and polyline shapes have the same underlying bug — their saved entities are also hidden and never restored on cancel within an active edit session. Text is the most visible manifestation because there is no Cesium "temp entity" to visually substitute for the label while editing, so cancellation leaves nothing at all on screen.
+
+**User need:** After cancelling or saving an edit, the saved shape must be visible on the map exactly as it was (or as it was just saved).
+
+**Acceptance criteria:**
+
+- [ ] Cancelling an edit of any shape type (text, circle, polyline, polygon) within an active edit session restores the saved entity to visible immediately
+- [ ] Saving an edit of any shape type restores the updated saved entity to visible immediately after save completes
+- [ ] Toggling edit mode is not required to restore visibility
+- [ ] All existing shape lifecycle tests continue to pass
+
+**Out of scope:** Changes to the context-menu flow or the save path itself beyond restoring entity visibility.
+
+---
+
+**Architect — System perspective:**
+
+The edit-open lifecycle in `map.component.ts` currently has an asymmetric hide/show contract:
+
+- `openShapeForEditing` → calls `savedShapesService.hideShape(dto.id)` ← **shape is hidden here**
+- `toggleEditMode` (exit) → calls `savedShapesService.showAllShapes()` ← **only restore path**
+
+There is no call to `showShape` or `showAllShapes` in the cancel-within-session or save-within-session paths. The gap has three termination branches, each of which needs coverage:
+
+1. **Cancel within session** — user presses X/Cancel on the edit form while still in edit mode
+2. **Save within session** — user presses Save while still in edit mode; after save, `clearTempEntityAfterSave` is called in `draw-tool.service.ts`, which destroys the temp entity — but the saved entity is still hidden
+3. **Exit edit mode** — `toggleEditMode()` calls `showAllShapes()` which currently covers this path correctly
+
+The shape ID that was hidden is known at the time `openShapeForEditing` is called (`dto.id`). It must be preserved and used when any of branches 1 or 2 executes.
+
+**Components affected:**
+
+- `src/app/components/map/map.component.ts` — owns the edit lifecycle, the hide call, and the cancel/save event handlers
+- `src/app/services/draw-tool.service.ts` — `clearTempEntityAfterSave` is the save-completion hook
+- `src/app/services/saved-shapes.service.ts` — owns `showShape(id)` and `showAllShapes()`
+
+---
+
+##### Step 1.2 — Agent Reviews
+
+**Frontend Expert:**
+
+The fix location is unambiguous. `map.component.ts` already holds the reference to the shape being edited (it is passed as `savedShape.shapeDto` into `openShapeForEditing`). The simplest and most Angular-idiomatic solution is to store `this.editingShapeId = dto.id` in that method, then call `this.savedShapesService.showShape(this.editingShapeId)` at the two missing termination points. No new services, no new events, no RxJS. Minimal diff.
+
+One subtlety on the save path: `clearTempEntityAfterSave` lives in `draw-tool.service.ts` and is called from the service layer. The component should hook into the save-completion output from the edit-draw component (or the existing `isSaving` signal drop-to-false) rather than reaching into the service method directly. The `map.component.ts` already subscribes to form-level save events. That is the correct hook point.
+
+**Tester:**
+
+Root cause is proven by the Playwright assertion in the bug report. Test requirements:
+
+- **Unit:** A test that calls `openShapeForEditing` (which calls `hideShape`), then calls the cancel handler, and asserts `showShape` was called with the correct ID.
+- **Unit:** A test that calls `openShapeForEditing`, then triggers save-complete, and asserts `showShape` was called.
+- **E2E (Playwright):** The existing failing test `test_bug_text_shape_disappears_on_cm_open.py` provides direct proof for the cancel path. Extend it to also verify the save-within-session path.
+- **Regression:** Full E2E suite must stay green.
+
+Note: the Playwright proof already exists as a confirmed-failing test — this bug is unusually well-evidenced for day-zero planning.
+
+**Code Reviewer:**
+
+Three concerns before implementation begins:
+
+1. `editingShapeId` must be cleared (set to `null` / `undefined`) after it is used in both the cancel and save paths. If it is not cleared, a second cancel (e.g., start editing shape A, cancel, start editing shape B, cancel) could call `showShape` on stale IDs.
+2. The `toggleEditMode` exit path already calls `showAllShapes()`. Introducing a second `showShape` call before that (if the user exits without cancelling or saving) would be a no-op — `showAllShapes` is idempotent — but the `editingShapeId` field should still be cleared to prevent double-show surprises. Consider clearing it inside `openShapeForEditing` before assigning, to handle the edge case of opening a second shape without explicitly cancelling the first.
+3. Do not call `showShape` if `editingShapeId` is `undefined`/`null` — guard the call.
+
+---
+
+##### Step 1.3 — Architecture Proposal
+
+**Three candidate fix options:**
+
+**Option A — Show in cancel handler only (map.component.ts)**
+
+- Add `this.savedShapesService.showShape(this.editingShapeId)` in the cancel event handler in `map.component.ts`.
+- Does NOT cover the save-within-session path (branch 2). Incomplete.
+
+**Option B — Show in `clearTempEntityAfterSave` (draw-tool.service.ts)**
+
+- Add `showShape` call inside `clearTempEntityAfterSave`.
+- The service does not have direct access to the "currently editing shape ID" — it would need to be injected or passed as a parameter. This couples the draw-tool service to the saved-shapes service in a direction that does not exist today, and adds a parameter to an internal method just to propagate a visual side-effect. Does NOT cover the cancel path (branch 1). Incomplete, and architecturally muddier.
+
+**Option C (ORIGINALLY VOTED — SUPERSEDED, see Revision below) — Track `editingShapeId` in `map.component.ts`; restore from both cancel and save-complete paths**
+
+Implementation:
+
+1. Add `private editingShapeId: string | undefined` field to `map.component.ts`.
+2. In `openShapeForEditing`: set `this.editingShapeId = dto.id` (before calling `hideShape`).
+3. Add a private helper `restoreEditingShape()`:
+   ```typescript
+   private restoreEditingShape(): void {
+     if (this.editingShapeId) {
+       this.savedShapesService.showShape(this.editingShapeId);
+       this.editingShapeId = undefined;
+     }
+   }
+   ```
+4. Call `restoreEditingShape()` from the **cancel handler** and the **save-complete handler**.
+5. In `toggleEditMode` (exit path): clear `this.editingShapeId = undefined`.
+
+**Why Option C over A or B:**
+
+- Option A misses the save path.
+- Option B misses the cancel path and introduces wrong-layer coupling.
+- Option C is the only option that closes all three branches at the time of initial analysis.
+
+⚠️ **NOTE: Option C is superseded by Option D.** An additional trigger was discovered (shape-type switch also causes the disappearance) and a simpler architectural fix was identified. See **Revision — Option D** below.
+
+---
+
+##### ⚠️ Revision — Expanded Root Cause and New Fix Direction (2026-06-22)
+
+**Additional trigger discovered (Ariel):**
+The shape also disappears when the user selects a different draw-type button while a saved shape edit session is open. When a new draw type is selected, `startDrawing` is called in `DrawToolService`, which destroys the current temp entity and creates a new one. The saved shape is still hidden from the earlier `hideShape` call in `openShapeForEditing` — it was never restored.
+
+This means the hide/show contract has at least **four escape routes** where `showShape` is never called:
+
+1. Cancel within session
+2. Save within session
+3. Switch draw type while editing
+4. Open a second saved shape without explicit cancel
+
+Option C attempts to chase these escape routes reactively with a tracking field. The user has identified that this approach is fragile — any new code path that ends an edit session without going through `restoreEditingShape()` re-introduces the bug.
+
+**Root cause (revised):**
+The `hideShape(dto.id)` call in `openShapeForEditing` is the fundamental problem. The saved entity is hidden proactively to prevent visual duplication with the temp entity. But the hide/show lifecycle is impossible to keep in sync with all the ways an edit session can end.
+
+**Proposed fix — Option D (new recommendation): Remove `hideShape` from `openShapeForEditing`**
+
+Instead of hiding the saved entity and trying to restore it, **never hide it**. The temp entity created by `DrawToolService` overlaps the saved entity during editing. This is visually acceptable (the temp entity renders on top). On any termination path — cancel, save, type-switch, mode-exit — the saved entity was never hidden and therefore remains visible without any additional code.
+
+Implementation (single change):
+
+- In `src/app/components/map/map.component.ts`, `openShapeForEditing`: **remove** the `hideShape` call and its guard:
+  ```typescript
+  // REMOVE these lines:
+  if (dto.id) {
+    this.savedShapesService.hideShape(dto.id);
+  }
+  ```
+
+The `showAllShapes()` call in `toggleEditMode` can also be removed (or kept for safety — it becomes a no-op if nothing is hidden).
+
+**Why Option D over Option C:**
+
+| Criterion                   | Option C                            | Option D                                |
+| --------------------------- | ----------------------------------- | --------------------------------------- |
+| Lines of new code           | ~10 (field + helper + 3 call sites) | **-3 (deletion only)**                  |
+| Escape-route risk           | Chases all exit paths (fragile)     | **None — saved entity never hidden**    |
+| Shape-type switch fixed     | ❌ Requires yet another call site   | ✅ Fixed for free                       |
+| Save-within-session fixed   | ✅                                  | ✅                                      |
+| Cancel-within-session fixed | ✅                                  | ✅                                      |
+| Duplicate-open edge case    | Requires stale-ID guard             | **No state to manage**                  |
+| Visual during editing       | No duplication (entity hidden)      | Temp entity overlaps saved (acceptable) |
+
+**Components affected:**
+
+- `src/app/components/map/map.component.ts` — remove `hideShape` call
+- `src/app/services/saved-shapes.service.ts` — no changes (keep `hideShape`/`showShape` API for future use)
+- `src/app/services/draw-tool.service.ts` — no changes
+
+**New components:** None
+
+**API/DB/Infrastructure changes:** None
+
+**Security considerations:** None.
+
+---
+
+##### Step 1.4 — Vote (Initial)
+
+**Fix options at initial analysis:**
+
+| Option | Description                                                 | Completeness                               |
+| ------ | ----------------------------------------------------------- | ------------------------------------------ |
+| A      | showShape in cancel handler only                            | Partial (misses save path)                 |
+| B      | showShape in clearTempEntityAfterSave only                  | Partial (misses cancel path) + wrong layer |
+| C      | Track editingShapeId, restoreEditingShape() from both paths | Complete at time of vote                   |
+
+**Votes for Option C (initial):**
+
+| Agent         | Votes | Rationale                                                                          |
+| ------------- | ----- | ---------------------------------------------------------------------------------- |
+| Architect     | 3     | Only complete option; minimal diff; correct ownership in map.component.ts          |
+| PM            | 1     | Covers both user-visible failure scenarios (cancel and save)                       |
+| Frontend      | 1     | No new dependencies; idiomatic component-level field; trivial to test              |
+| Tester        | 1     | Both paths are testable at unit and E2E level with zero test infrastructure change |
+| Code Reviewer | 1     | DRY helper method; clear ownership; stale-ID risk addressed by field clear         |
+
+**Option C total: 7 effective votes → threshold (5) met → initially APPROVED**
+
+> ⚠️ **Superseded by Option D** after additional trigger discovered (2026-06-22). See Revision section above.
+
+##### Step 1.5 — Re-vote (Option D)
+
+**All original voters re-assessed with expanded scope:**
+
+| Agent         | Vote  | Rationale                                                                                                                                                                                                                  |
+| ------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Architect     | D (3) | Option D eliminates the fragile hide/show contract entirely. A deletion is safer and more robust than tracking escape routes. Aligns with Req 3.6 — the saved entity must remain accessible at all times during edit mode. |
+| PM            | D (1) | Fixes the cancel path, the save path, the type-switch path, and any future path for free. No new state to reason about.                                                                                                    |
+| Frontend      | D (1) | Removing 3 lines of code with no replacement is the best possible diff. Temporary visual overlap during editing is acceptable and consistent with how other shape types behave.                                            |
+| Tester        | D (1) | The existing Playwright proof test will confirm the fix. No additional escape-route-specific tests needed beyond regression.                                                                                               |
+| Code Reviewer | D (1) | Deletion eliminates the stale-ID risk, the double-open edge case, and all future drift. Strongly preferred over reactive tracking.                                                                                         |
+
+**Option D total: 7 effective votes → threshold (5) met → APPROVED**
+
+---
+
+#### Bug Record
+
+- ID: B-017
+- Title: Saved shape disappears from map after CM edit open or shape-type switch
+- Status: ready-for-fix
+- Severity: High
+- Violated Requirement IDs: 3.6, 3.10
+- Current Behavior: When a user opens any saved shape for editing via the context menu, `openShapeForEditing()` calls `savedShapesService.hideShape(dto.id)`. The shape then becomes permanently invisible within the current edit session under three conditions: (1) the user cancels the edit (presses X/Cancel while still in edit mode); (2) the user completes a save while remaining in edit mode (temp entity cleared but saved entity stays hidden); (3) the user selects a different shape-type button while the saved shape's edit form is open (`startDrawing` replaces the temp entity without restoring the saved shape). The only recovery path in all three cases is a full edit-mode toggle, which is non-obvious to users. Text shapes are most visibly broken because the temp entity that overlaps during editing provides no visual substitute after it is destroyed.
+- Expected Behavior: Saved shape entities must never be hidden during an edit session. The temp entity created by `DrawToolService` visually overlaps the saved entity during editing, which is acceptable. On any termination (cancel, save, type-switch, mode-exit), the saved entity remains visible without any restoration logic.
+- Affected Shape Types: All (text, circle, polyline, polygon). Text is most obvious.
+- Proposed Fix Direction: **Option D** — remove the `hideShape(dto.id)` call and its guard from `openShapeForEditing()` in `map.component.ts`. The saved entity is never hidden; therefore it never needs to be restored. The `DrawToolService` is **not** responsible for hiding saved shapes. No tracking field, no helper method, no new call sites.
+- Candidate Implementation Locations:
+  - `src/app/components/map/map.component.ts` — remove `hideShape` call from `openShapeForEditing` (~3 lines deleted)
+  - `src/app/services/saved-shapes.service.ts` — no changes
+  - `src/app/services/draw-tool.service.ts` — no changes
+- Proof Required:
+  - E2E (Playwright): `test_bug_text_shape_disappears_on_cm_open.py` must go from CONFIRMED FAILING to PASS (cancel path)
+  - E2E (Playwright): add test for shape-type-switch path — open saved shape, select a different draw type button, assert saved entity is still visible
+  - E2E (Playwright): add test for save-within-session path — open saved shape, save, assert saved entity is visible without toggling edit mode
+  - Full TS unit suite and full E2E regression suite must remain green
+- Playwright Proof: `e2e/test_bug_text_shape_disappears_on_cm_open.py` — **CONFIRMED FAILING** (cancel path)
+
+#### Branch
+
+`fix/b-017-text-shape-disappears-after-cm-open`
+
+---
+
 ## Phase 4 Prioritization
 
 Priority P0 (execute first):

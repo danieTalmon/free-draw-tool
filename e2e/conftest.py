@@ -31,5 +31,5 @@ def setup(page):
         pass
 
     # Enter edit mode.
-    page.locator(".mode-btn").first().click(force=True)
+    page.locator(".mode-btn").first.click(force=True)
     page.wait_for_timeout(500)
