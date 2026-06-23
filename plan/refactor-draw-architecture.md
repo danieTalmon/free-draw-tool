@@ -22,16 +22,16 @@ MapComponent
 
 ### Entity collections and owners
 
-| Collection | Owner | Entities |
-|---|---|---|
-| `viewer.entities` | `DrawToolService` | Temp drawing entity (1) + temp vertex entities (N) |
+| Collection                    | Owner                | Entities                                                            |
+| ----------------------------- | -------------------- | ------------------------------------------------------------------- |
+| `viewer.entities`             | `DrawToolService`    | Temp drawing entity (1) + temp vertex entities (N)                  |
 | `FREE_DRAW_SHAPES` DataSource | `SavedShapesService` | Saved entity (1) + vertex entities (N) + hit entities (N) per shape |
 
 ### Mouse handler registrations
 
-| Handler | Owner | Events bound |
-|---|---|---|
-| `DrawToolService.handler` | `DrawToolService.startDrawing()` | LEFT_DOWN, MOUSE_MOVE, LEFT_UP, LEFT_CLICK |
+| Handler                           | Owner                                    | Events bound                                                                                    |
+| --------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `DrawToolService.handler`         | `DrawToolService.startDrawing()`         | LEFT_DOWN, MOUSE_MOVE, LEFT_UP, LEFT_CLICK                                                      |
 | `MapComponent.contextMenuHandler` | `MapComponent.setupContextMenuHandler()` | LEFT_DOWN, MOUSE_MOVE, LEFT_UP, LEFT_CLICK, RIGHT_CLICK (via `SavedShapesMapOperationsService`) |
 
 Both handlers bind to `LEFT_DOWN`, `MOUSE_MOVE`, and `LEFT_UP` on the same Cesium canvas. Cesium delivers events to ALL registered `ScreenSpaceEventHandler` instances — not the first match. Both run simultaneously when `isDrawingMode` and `isEditMode` are true.
@@ -85,6 +85,7 @@ Switch draw type → MapComponent.startDrawing(newType)
 **Trigger:** Any saved polyline/polygon opened for editing.
 
 **Cause:** Two independent systems both create vertex entities:
+
 1. `SavedShapesService.createVertexEntitiesFromDto()` — static vertex entities in DataSource
 2. `DrawToolService.syncVertexEntities()` — live vertex entities in `viewer.entities`
 
@@ -99,9 +100,11 @@ Both sets are visible simultaneously. There is no coordination between them.
 **Trigger:** User tries to drag a vertex point on an edited saved polyline/polygon.
 
 **Cause:** `DrawToolService.getPickedVertexIndex()` uses:
+
 ```typescript
 const vertexIndex = this.vertexEntities.indexOf(pickedEntity);
 ```
+
 `this.vertexEntities` only contains entities added by `DrawToolService.syncVertexEntities()` (in `viewer.entities`).
 
 The SavedShapesService's vertex entities (in the DataSource) are never in `this.vertexEntities`, so picking them returns -1 and vertex drag is skipped. Whole-shape drag triggers instead.
@@ -139,6 +142,7 @@ The CallbackProperty lambdas in `applyCallbackPropertiesToBorrowedEntity` only c
 ### P-06 `startDrawing` has dual purpose without clear distinction
 
 **Cause:** `startDrawing(type, options?)` is called for:
+
 1. NEW shape creation: no `preserveFormState`, no `existingEntity`
 2. EDIT existing shape: `preserveFormState: true`, optional `existingEntity`
 3. SWITCH draw type: no `preserveFormState` (called from `MapComponent.startDrawing`)
@@ -163,7 +167,7 @@ Extracted from the existing codebase for all new code to follow.
 
 ```typescript
 // Services: inject() at field level, no constructor DI
-@Injectable({ providedIn: 'root' })
+@Injectable({ providedIn: "root" })
 export class MyService {
   private readonly dep = inject(DependencyService);
   private readonly ngZone = inject(NgZone);
@@ -172,7 +176,7 @@ export class MyService {
 
 // Components: standalone, OnPush, inject()
 @Component({
-  selector: 'app-my',
+  selector: "app-my",
   standalone: true,
   imports: [CommonModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -277,6 +281,7 @@ IDLE → EDITING(shapeId, type) → IDLE   (saved shape: edit + save/cancel)
 ```
 
 **How create works:**
+
 1. `DrawingSessionService.startCreating(type)`:
    - Calls `drawToolService.startDrawing(type)` — creates temp entity in `viewer.entities`
    - State → `CREATING`
@@ -285,6 +290,7 @@ IDLE → EDITING(shapeId, type) → IDLE   (saved shape: edit + save/cancel)
 4. State → `IDLE`
 
 **How edit works:**
+
 1. `DrawingSessionService.startEditing(savedShape)`:
    - `savedShapesService.hideShape(id)` — hides saved entity
    - `drawToolService.startDrawing(type, {preserveFormState: true})` — creates NEW temp entity (clean, no mutation)
@@ -297,20 +303,24 @@ IDLE → EDITING(shapeId, type) → IDLE   (saved shape: edit + save/cancel)
 6. State → `IDLE`
 
 **Vertex entities:**
+
 - `SavedShapesService` stops creating vertex entities for polylines/polygons — those are purely a drawing-time concern, not a saved-shape display concern.
 - Only `DrawToolService.syncVertexEntities()` creates vertex entities.
 - Vertex picking continues to work via `this.vertexEntities.indexOf()`.
 
 **Mouse handlers:**
+
 - Keep dual-handler design but add explicit mutual exclusion: `DrawToolService.handler` is only active in `CREATING` or `EDITING` state; `contextMenuHandler` suppresses drag logic while drawing session is active.
 
 **Pros:**
+
 - Least new code (~150 lines for `DrawingSessionService`)
 - Existing services largely unchanged
 - Vertex conflict resolved by removing SavedShapesService vertex entities
 - Cancel/save paths go through one coordinator → no forgotten restore calls
 
 **Cons:**
+
 - Still creates a temp entity (duplication hidden behind hide/show)
 - Session state is a new global singleton
 - `DrawToolService` still has the dual-purpose `startDrawing` (create vs edit)
@@ -329,6 +339,7 @@ FREE_DRAW_SHAPES DataSource ← all other saved entities
 ```
 
 **How create works:**
+
 1. `DrawToolService.startDrawing(type)`:
    - Creates entity in `DRAWING` DataSource (with CallbackProperty, same as current `viewer.entities` approach but in a named DataSource)
    - Mouse events update positions via `DrawToolService.handler` as-is
@@ -337,6 +348,7 @@ FREE_DRAW_SHAPES DataSource ← all other saved entities
    - OR: update entity in-place (from CallbackProperty to static values)
 
 **How edit works:**
+
 1. `openShapeForEditing(savedShape)`:
    - `savedShapesService.moveToDrawingDataSource(id)`:
      - Removes entity from `FREE_DRAW_SHAPES`
@@ -347,21 +359,25 @@ FREE_DRAW_SHAPES DataSource ← all other saved entities
 3. On save: entity already has updated positions in `DRAWING` DataSource; apply new static values; move to `FREE_DRAW_SHAPES`
 
 **Vertex entities:**
+
 - Only in `DRAWING` DataSource when editing/creating — removed when session ends
 - No vertex entities in `FREE_DRAW_SHAPES` (display only, no interaction vertex markers in saved state)
 
 **Mouse handlers:**
+
 - Cesium picking on `DRAWING` DataSource entity works correctly
 - `SavedShapesMapOperationsService` drag only operates on `FREE_DRAW_SHAPES` entities (not in DRAWING state)
 - No ambiguity
 
 **Pros:**
+
 - Single entity at all times — no duplication
 - DataSource separation gives clear visual layer control
 - Mouse handler conflicts resolved (DrawToolService owns DRAWING, SavedShapesMapOperationsService owns FREE_DRAW_SHAPES)
 - Cancel is simply: recreate static entity in FREE_DRAW_SHAPES, remove from DRAWING
 
 **Cons:**
+
 - Need `moveToDrawingDataSource` implementation (entity property conversion)
 - Entity structure must still be converted (static → CallbackProperty on edit open)
 - More changes to `SavedShapesService` API
@@ -376,13 +392,13 @@ FREE_DRAW_SHAPES DataSource ← all other saved entities
 
 ```typescript
 interface DrawingState {
-  mode: 'idle' | 'creating' | 'editing';
+  mode: "idle" | "creating" | "editing";
   shapeType: DrawMapOption;
-  positions: MapLocation[];    // single source of truth
+  positions: MapLocation[]; // single source of truth
   radius: number | undefined;
-  style: { lineType: OutlineType; lineWidth: number; lineColor: string; };
-  editingShapeId: string | undefined;  // set when mode === 'editing'
-  isComplete: boolean;         // polyline/polygon fully drawn
+  style: { lineType: OutlineType; lineWidth: number; lineColor: string };
+  editingShapeId: string | undefined; // set when mode === 'editing'
+  isComplete: boolean; // polyline/polygon fully drawn
 }
 ```
 
@@ -401,6 +417,7 @@ Mouse events → │ InputService │ → writes to DrawingState signal
 ```
 
 **How create works:**
+
 1. `DrawingStateService.startCreating(type)`: sets `mode = 'creating'`, `shapeType = type`, clears positions
 2. `CesiumRenderer` effect: detects state change, creates entity in `viewer.entities` with CallbackProperty reading from `drawingState.positions`
 3. Mouse left-click → `InputService` pushes new position to `drawingState.positions`
@@ -408,6 +425,7 @@ Mouse events → │ InputService │ → writes to DrawingState signal
 5. On save: `drawingState.mode = 'idle'`; `CesiumRenderer` removes drawing entity; `SavedShapesService.addShape(dto)` adds static entity
 
 **How edit works:**
+
 1. `DrawingStateService.startEditing(savedShape)`: sets `mode = 'editing'`, loads positions from DTO, `editingShapeId = id`
 2. `CesiumRenderer`: detects `mode === 'editing'` for `editingShapeId` — hides saved entity, creates/updates the one rendering entity with current state
 3. Mouse drag → updates positions in DrawingState
@@ -415,21 +433,25 @@ Mouse events → │ InputService │ → writes to DrawingState signal
 5. On cancel: `DrawingStateService.cancelEditing()` → restores state from original DTO → `CesiumRenderer` restores entity
 
 **Vertex handling:**
+
 - `CesiumRenderer` creates vertex entities based on `drawingState.positions` for vertex-editing shapes
 - One system, one owner
 
 **Mouse handlers:**
+
 - `InputService` owns a SINGLE `ScreenSpaceEventHandler`
 - No dual-handler conflicts
 - Delegates to `DrawingStateService` based on current mode
 
 **Pros:**
+
 - Cleanest architecture — single source of truth
 - One entity, one handler, one renderer
 - Fully testable (state is a plain signal)
 - Eliminates all current P-01 through P-07
 
 **Cons:**
+
 - Largest amount of new code (~3 new services, partial rewrite of DrawToolService)
 - Existing form→service binding must be inverted (form reads state, not the other way)
 - Higher risk during transition
@@ -449,6 +471,7 @@ CesiumInteractionService ← single mouse handler, delegates to active service
 ```
 
 **How create works:**
+
 1. `DrawCreateService.start(type)`:
    - Creates temp entity in `viewer.entities`
    - Registers CREATE handlers on `CesiumInteractionService`
@@ -457,6 +480,7 @@ CesiumInteractionService ← single mouse handler, delegates to active service
 4. On save: `drawCreateService.finalize()` → API → `savedShapesService.addShape()`
 
 **How edit works:**
+
 1. `DrawEditService.start(savedShape)`:
    - `savedShapesService.hideShape(id)` — hides saved entity
    - Creates temp entity in `viewer.entities` (clean, no mutation)
@@ -467,19 +491,23 @@ CesiumInteractionService ← single mouse handler, delegates to active service
 4. On save: `savedShapesService.updateShape(newDto)` + `drawEditService.cleanup()`
 
 **Vertex entities:**
+
 - `DrawCreateService` and `DrawEditService` each manage their own vertex entities (no SavedShapesService vertex entities needed for editing)
 
 **Mouse handlers:**
+
 - Single `CesiumInteractionService.handler`
 - Mode-aware: delegates to active service only
 - Eliminates dual-handler conflict
 
 **Pros:**
+
 - Clear separation: create vs. edit have no shared code paths
 - Single handler — no event conflict
 - Not a full rewrite — can be done incrementally
 
 **Cons:**
+
 - More files/services than Option A
 - Need shared Cesium utilities (entity creation, position math) between the two services
 - Still requires hiding saved entity on edit start (fragile-ish, but single coordinator owns it)
@@ -488,17 +516,17 @@ CesiumInteractionService ← single mouse handler, delegates to active service
 
 ## 5 — Option Comparison
 
-| Criterion | A (Session Manager) | B (Unified DataSource) | C (Signal ViewModel) | D (Split Services) |
-|---|---|---|---|---|
-| Entity duplication fixed | ✅ (via hide) | ✅ (single entity) | ✅ (single entity) | ✅ (via hide) |
-| Double vertex entities fixed | ✅ | ✅ | ✅ | ✅ |
-| Vertex drag fixed | ✅ | ✅ | ✅ | ✅ |
-| Handler conflict fixed | Partial | ✅ | ✅ | ✅ |
-| Cancel robustness | ✅ (coordinator) | ✅ (recreate from DTO) | ✅ (state revert) | ✅ (coordinator) |
-| Complexity (LoC estimate) | Low (~150) | Medium (~400) | High (~600) | Medium (~350) |
-| Risk | Low | Medium | High | Medium |
-| Testability | Good | Good | Excellent | Good |
-| Future-proof | Medium | High | Highest | High |
+| Criterion                    | A (Session Manager) | B (Unified DataSource) | C (Signal ViewModel) | D (Split Services) |
+| ---------------------------- | ------------------- | ---------------------- | -------------------- | ------------------ |
+| Entity duplication fixed     | ✅ (via hide)       | ✅ (single entity)     | ✅ (single entity)   | ✅ (via hide)      |
+| Double vertex entities fixed | ✅                  | ✅                     | ✅                   | ✅                 |
+| Vertex drag fixed            | ✅                  | ✅                     | ✅                   | ✅                 |
+| Handler conflict fixed       | Partial             | ✅                     | ✅                   | ✅                 |
+| Cancel robustness            | ✅ (coordinator)    | ✅ (recreate from DTO) | ✅ (state revert)    | ✅ (coordinator)   |
+| Complexity (LoC estimate)    | Low (~150)          | Medium (~400)          | High (~600)          | Medium (~350)      |
+| Risk                         | Low                 | Medium                 | High                 | Medium             |
+| Testability                  | Good                | Good                   | Excellent            | Good               |
+| Future-proof                 | Medium              | High                   | Highest              | High               |
 
 ---
 
