@@ -2,13 +2,13 @@
 Bug regression tests: B-017
 Title: Saved shape disappears from map after CM edit open or shape-type switch
 
-Fix applied (Option D): removed the hideShape(dto.id) call from openShapeForEditing
-in map.component.ts. The saved entity is never hidden during editing; the temp entity
-overlaps it on top. On any termination path (cancel, type-switch, save, mode-exit)
-the saved entity was never hidden and therefore remains visible.
+Fix applied (Option A — DrawingSessionService): hideShape is called when a saved shape
+is opened for editing, and showShape is called on every termination path (cancel,
+type-switch, save, mode-exit). The saved entity is hidden during editing (to avoid double
+vertex overlaps) but must be fully restored on any exit path.
 
 Scenarios covered:
-  1. Cancel path   — open for editing, cancel → entity must be visible
+  1. Cancel path   — open for editing, cancel → entity must be visible after cancel
   2. Type-switch   — open for editing, select different draw type → entity must be visible
   3. Screenshot    — visual evidence capture on cancel path
 """
@@ -91,25 +91,22 @@ def _cancel_editing(page: Page) -> None:
 
 def test_text_shape_entity_visible_after_cm_open(page: Page) -> None:
     """
-    B-017 fix — cancel path: the saved Text entity must remain visible during
-    editing and after cancel (Option D: hideShape is never called).
+    B-017 fix (Option A) — cancel path: the saved Text entity is intentionally
+    hidden during editing (to prevent vertex overlap) and must be fully restored
+    after cancel.
     """
     _add_saved_text_and_open_for_edit(page)
     page.wait_for_timeout(300)
 
-    # Option D: the entity is NOT hidden while the edit form is open
-    visible_during_edit = _entity_visible(page, TEXT_SHAPE_DTO["id"])
-    assert visible_during_edit is True, (
-        f"B-017 REGRESSION: entity was hidden on open (entity.show={visible_during_edit}). "
-        "The hideShape call should have been removed from openShapeForEditing."
-    )
+    # Option A: entity IS hidden while the edit form is open (expected behavior)
+    # We do not assert visibility here — the session correctly hides it.
 
     _cancel_editing(page)
 
-    # After cancel the saved entity must still be visible
+    # After cancel the saved entity must be visible again
     visible_after_cancel = _entity_visible(page, TEXT_SHAPE_DTO["id"])
     assert visible_after_cancel is True, (
-        f"B-017 REGRESSION: saved Text entity hidden after cancel "
+        f"B-017 REGRESSION: saved Text entity still hidden after cancel "
         f"(entity.show={visible_after_cancel})"
     )
 
@@ -146,7 +143,8 @@ def test_text_shape_stays_visible_after_type_switch(page: Page) -> None:
 
 def test_text_shape_entity_visible_after_cm_open_screenshot(page: Page) -> None:
     """
-    Same flow as above but with a screenshot taken after cancel for visual evidence.
+    Same flow as cancel-path test but with a screenshot for visual evidence.
+    Entity is hidden during editing (Option A) and restored after cancel.
     """
     _add_saved_text_and_open_for_edit(page)
     page.wait_for_timeout(300)

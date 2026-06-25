@@ -27,13 +27,12 @@ import { Subject, takeUntil } from 'rxjs';
 import { DrawToolService } from '@services/draw-tool.service';
 import { MapService } from '@services/map.service';
 import { SavedShapesService } from '@services/saved-shapes.service';
+import { DrawingSessionService } from '@services/drawing-session.service';
 import { SavedShapeEntity } from '@models/saved-shape-entity.model';
 import { MapOperationsEnum } from '@models/map-operations-enum';
 import { DrawMapOption } from '@models/user-preferences';
 import { ContextMenuAction } from '@models/context-menu-action.model';
 import { ShapeApiService } from '@services/shape-api.service';
-import { EditShapeFacadeService } from '@services/edit-shape-facade.service';
-import { shapeTypeToMapOperation } from '@adapters/shape.adapter';
 import { SavedShapesMapOperationsService } from '../../services/saved-shapes-map-operations.service';
 import { EditDrawComponent } from '@components/edit-draw/edit-draw.component';
 import { ShapeContextMenuComponent } from '@components/shape-context-menu/shape-context-menu.component';
@@ -50,8 +49,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private readonly drawToolService = inject(DrawToolService);
   private readonly mapService = inject(MapService);
   private readonly savedShapesService = inject(SavedShapesService);
+  private readonly drawingSessionService = inject(DrawingSessionService);
   private readonly shapeApiService = inject(ShapeApiService);
-  private readonly editShapeFacadeService = inject(EditShapeFacadeService);
   private readonly savedShapesMapOperationsService = inject(
     SavedShapesMapOperationsService,
   );
@@ -203,10 +202,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   toggleEditMode(): void {
     this.isEditMode = !this.isEditMode;
     if (!this.isEditMode) {
-      // Exit edit mode - cancel any drawing and hide form
-      this.drawToolService.cancelDrawing();
-      this.currentDrawType = MapOperationsEnum.DRAW_NONE;
-      // Show all saved shapes that might have been hidden during editing
+      // Cancel the active session (restores any hidden entity, stops drawing).
+      this.drawingSessionService.cancel();
+      // Show all shapes as a safety net (covers edge cases where hide was called
+      // outside the session lifecycle, e.g. on viewer init).
       this.savedShapesService.showAllShapes();
     }
   }
@@ -214,15 +213,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   startDrawing(type: DrawMapOption): void {
     if (!this.isEditMode) return;
 
-    // If clicking the same type, toggle off
+    // If clicking the same type, toggle the session off.
     if (this.currentDrawType === type) {
-      this.drawToolService.cancelDrawing();
-      this.currentDrawType = MapOperationsEnum.DRAW_NONE;
+      this.drawingSessionService.cancel();
       return;
     }
 
-    this.currentDrawType = type;
-    this.drawToolService.startDrawing(type);
+    this.drawingSessionService.startCreating(type);
   }
 
   // Context Menu Methods
@@ -269,7 +266,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   private canInteractWithSavedShapes(): boolean {
-    return this.isEditMode;
+    // Suppress saved-shape drag/click when a drawing session is active (P-07 partial fix).
+    return this.isEditMode && !this.drawingSessionService.isActive();
   }
 
   private handleSavedShapeLeftClick(position: Cartesian2): void {
@@ -333,14 +331,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   private openShapeForEditing(savedShape: SavedShapeEntity): void {
-    const dto = savedShape.shapeDto;
-    const drawType = shapeTypeToMapOperation(dto.shapeType);
-    this.currentDrawType = drawType;
-    this.drawToolService.startDrawing(drawType, { preserveFormState: true });
-    this.editShapeFacadeService.fromShapeDto(dto);
-    this.editShapeFacadeService.markAsSaved(dto);
-    this.editShapeFacadeService.setCurrentShapeType(drawType);
-    this.drawToolService.loadPositionsFromForm();
+    this.drawingSessionService.startEditing(savedShape);
   }
 
   private deleteShapeFromContextMenu(savedShape: SavedShapeEntity): void {

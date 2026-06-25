@@ -1,7 +1,7 @@
 # Option A — DrawingSessionService Implementation Plan
 
-**Date:** 2026-06-22  
-**Status:** Awaiting Ariel approval before coding  
+**Date:** 2026-06-22 — **Revised: 2026-06-23**  
+**Status:** Plan revised after A2 analysis — awaiting Ariel approval before coding  
 **Branch:** `fix/b-017-text-shape-disappears-after-cm-open` (same feature branch)  
 **Workflow:** TEAM-WORKFLOW  
 **Skill:** engineering-workflow + frontend-expert
@@ -22,7 +22,42 @@ Seven root-cause problems exist in the current draw/edit architecture (documente
 | P-06 | `startDrawing()` has 3 implicit modes with no formal distinction                                                 |
 | P-07 | Dual `ScreenSpaceEventHandler` — `DrawToolService.handler` + `contextMenuHandler` both own LEFT_DOWN/MOVE/UP     |
 
-**Baseline test state:** 336 unit tests green, 3/3 E2E tests green (B-017 proof tests).
+**Baseline test state:** 337 unit tests green (after A1 + A2 partial work), 3/3 E2E green.
+
+### 0.1 — Requirements Clarified During A2 Analysis
+
+Two user requirements were raised after the original plan was written, during the A2 discussion:
+
+| #    | Requirement                                                                                             | Type                         |
+| ---- | ------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| R-01 | Vertex dot markers visible on saved polyline/polygon at all times — even when NOT open in the edit form | Existing feature to preserve |
+| R-02 | Individual vertex drag/stretch on saved polyline/polygon when NOT in the edit form                      | **New feature**              |
+
+**Impact on the original plan:**
+
+The original TASK-A2 ("Remove vertex entities from `SavedShapesService`") was the **wrong fix** for P-01 and P-02. It resolved the double-vertex symptom by eliminating the vertex entities entirely, which:
+
+- Breaks R-01 (vertex dots disappear from saved shapes)
+- Prevents R-02 (no vertex entities to interact with)
+
+The **correct fix for P-01 and P-02** is coordination via `DrawingSessionService`:
+
+```
+startEditing(savedShape)
+  └── savedShapesService.hideShape(id)       ← hides entity + vertexEntities + hitEntities
+  └── drawToolService.startDrawing(type)
+       └── syncVertexEntities()              ← DrawToolService creates its own vertex entities
+                                                (no double — saved ones are hidden)
+cancelEditing() / confirmSave()
+  └── savedShapesService.showShape(id)       ← restores entity + vertexEntities + hitEntities
+  └── drawToolService cleanup
+       └── clearVertexEntities()             ← removes DrawToolService's temp vertex entities
+```
+
+This means:
+
+- **TASK-A2 is revised** — revert the partial A2 implementation, restore vertex entities in `SavedShapesService`
+- **TASK-A6 is added** — implement R-02: individual vertex drag in `SavedShapesMapOperationsService`
 
 ---
 
@@ -54,24 +89,25 @@ EDITING  ──switchType(type)──► CREATING   (restores saved entity, fres
 ### What stays the same
 
 - `DrawToolService` — internal mouse handlers, entity creation, position sync, vertex entities
-- `SavedShapesService` — entity storage, hide/show, addShape/updateShape/removeShape
+- `SavedShapesService` — entity storage, hide/show, addShape/updateShape/removeShape, **vertex entity creation stays**
 - `EditShapeFacadeService` — reactive form, API save/update
 - `EditDrawComponent` — save/cancel UI actions (routes through `DrawingSessionService`)
 
 ### What changes
 
-| Location                           | Change                                                                                                                                                   |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| NEW `DrawingSessionService`        | ~150 lines; owns session state signal; all lifecycle paths go through here                                                                               |
-| `MapComponent.openShapeForEditing` | delegates to `drawingSessionService.startEditing()`                                                                                                      |
-| `MapComponent.startDrawing`        | delegates to `drawingSessionService.startCreating()`                                                                                                     |
-| `MapComponent.toggleEditMode`      | calls `drawingSessionService.cancel()` when exiting edit mode                                                                                            |
-| `EditDrawComponent.cancel`         | calls `drawingSessionService.cancel()` instead of direct `DrawToolService` calls                                                                         |
-| `EditDrawComponent.save`           | calls `drawingSessionService.confirmSave()` on success                                                                                                   |
-| `SavedShapesService.addShape`      | **REMOVE** `createVertexEntitiesFromDto()` calls for `DRAW_POLYLINE` / `DRAW_POLYGON` (P-01 fix)                                                         |
-| `contextMenuHandler` guard         | suppress drag-ops while `sessionService.mode !== 'idle'` (P-07 partial fix)                                                                              |
-| `DrawToolService`                  | REVERT uncommitted Option E changes (`isBorrowedEntity`, `borrowedEntityDto`, `SavedShapesService` injection, `applyCallbackPropertiesToBorrowedEntity`) |
-| `MapComponent`                     | REVERT uncommitted Option E changes in `openShapeForEditing`                                                                                             |
+| Location                           | Change                                                                                                                                                            |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| NEW `DrawingSessionService`        | ~150 lines; owns session state signal; all lifecycle paths go through here                                                                                        |
+| `MapComponent.openShapeForEditing` | delegates to `drawingSessionService.startEditing()`                                                                                                               |
+| `MapComponent.startDrawing`        | delegates to `drawingSessionService.startCreating()`                                                                                                              |
+| `MapComponent.toggleEditMode`      | calls `drawingSessionService.cancel()` when exiting edit mode                                                                                                     |
+| `EditDrawComponent.cancel`         | calls `drawingSessionService.cancel()` instead of direct `DrawToolService` calls                                                                                  |
+| `EditDrawComponent.save`           | calls `drawingSessionService.confirmSave()` on success                                                                                                            |
+| `SavedShapesService.addShape`      | **KEEP** `createVertexEntitiesFromDto()` — vertex entities serve R-01 (display) and R-02 (drag). P-01/P-02 fixed by DrawingSessionService hide/show coordination. |
+| `SavedShapesMapOperationsService`  | **ADD** vertex-level drag — detect vertex entity pick, update only that vertex position (R-02)                                                                    |
+| `contextMenuHandler` guard         | suppress drag-ops while `sessionService.mode !== 'idle'` (P-07 partial fix)                                                                                       |
+| `DrawToolService`                  | REVERT uncommitted Option E changes (`isBorrowedEntity`, `borrowedEntityDto`, `SavedShapesService` injection, `applyCallbackPropertiesToBorrowedEntity`)          |
+| `MapComponent`                     | REVERT uncommitted Option E changes in `openShapeForEditing`                                                                                                      |
 
 ---
 
@@ -173,39 +209,41 @@ Tasks must be done in order (each builds on the previous).
 
 ---
 
-### TASK-A2 — Remove vertex entities from SavedShapesService (P-01 + P-02 fix)
+### TASK-A2 — Revert A2 implementation (restore vertex entities in SavedShapesService)
 
-**Scope:** `saved-shapes.service.ts`  
-**Why:** `SavedShapesService.addShape()` calls `createVertexEntitiesFromDto()` for polylines and polygons. This creates static vertex dots in the DataSource that stay visible even during editing, producing double vertex entities (P-01). These DataSource vertices are also never in `DrawToolService.vertexEntities`, breaking vertex drag pick detection (P-02).
+**Scope:** `saved-shapes.service.ts`, `saved-shapes.service.spec.ts`  
+**Why:** The partial A2 implementation removed `createVertexEntitiesFromDto()` calls, breaking R-01 (vertex dots on saved shapes) and removing the infrastructure needed for R-02 (vertex drag). P-01 and P-02 are fixed by `DrawingSessionService.startEditing()` calling `hideShape(id)` before `DrawToolService` creates its own vertex entities — not by deleting saved vertex entities.
 
 **What to do:**
 
-1. In `addShape()`, change:
+1. In `saved-shapes.service.ts`, restore `addShape()` to call `createVertexEntitiesFromDto()` and add vertex entities to the DataSource:
 
    ```typescript
    const vertexEntities = this.createVertexEntitiesFromDto(shapeDto);
+   const hitEntities = this.createHitEntitiesFromDto(shapeDto);
+
+   this.dataSource.entities.add(entity);
+   vertexEntities.forEach((vertexEntity) => {
+     this.dataSource?.entities.add(vertexEntity);
+   });
+   hitEntities.forEach((hitEntity) => {
+     this.dataSource?.entities.add(hitEntity);
+   });
    ```
 
-   to always return `[]` for vertex entities — i.e., stop calling `createVertexEntitiesFromDto()` entirely:
+   Remove the comment about "vertex display is a drawing-time concern".
 
-   ```typescript
-   const vertexEntities: Entity[] = []; // vertex display is a drawing-time concern
-   ```
-
-2. The `createVertexEntitiesFromDto()` private method can be removed (or kept as dead code that will be removed in a follow-up cleanup).
-
-3. `removeShape()`, `hideShape()`, `showShape()`, `showAllShapes()` already loop over `vertexEntities` — they stay unchanged; they will simply iterate an empty array for shapes that had no vertices stored.
-
-**Impact:** After saving a polyline/polygon and re-entering edit mode, there will be only ONE set of vertex dots (from `DrawToolService.syncVertexEntities()`), not two.
+2. In `saved-shapes.service.spec.ts`, revert all A2 spec changes:
+   - `'should add a polyline shape'` — restore `expect(savedShape?.vertexEntities?.length).toBe(2)`
+   - `'should add a polygon shape'` — restore `expect(savedShape?.vertexEntities?.length).toBe(3)`
+   - Restore `'should return parent shape for known vertex entity'` test (undo the rename to "should NOT find...")
+   - Remove the `'should NOT create vertex entities for polylines...'` test added in A2
 
 **Acceptance criteria:**
 
-- All 336 unit tests green
-- Manually: open a saved polyline for editing → only one set of vertex dots visible
-- Vertex drag works correctly
-
-**Unit test to add:**  
-`saved-shapes.service.spec.ts` — `'addShape should NOT create vertex entities for polylines (vertex entities are drawing-time only)'`
+- `npx tsc --noEmit` — 0 source errors
+- All tests green (should be back to 336 baseline after removing the A2-added test)
+- Vertex dots visible on saved polylines in the running app
 
 > ✋ **STOP — run tests, then wait for Ariel approval before proceeding to A3.**
 
@@ -492,43 +530,132 @@ readonly confirmSave = (): void => {
 
 ---
 
-### TASK-A6 — Update bugs.md + write E2E regression test
+### TASK-A6 — Add individual vertex drag to SavedShapesMapOperationsService (R-02)
 
-**Scope:** `plan/bugs.md`, `e2e/`  
-**What to do:**
+**Scope:** `saved-shapes-map-operations.service.ts`, `saved-shapes-map-operations.service.spec.ts`  
+**Feature:** When the user clicks and drags a vertex dot on a saved polyline/polygon that is NOT open in the edit form, only that vertex moves. Whole-shape drag (clicking the polyline body) remains unchanged.
 
-1. Update `plan/bugs.md` B-017:
-   - Status: `in-progress` → `resolved`
-   - Add Phase 3 section: "Option A — DrawingSessionService"
-   - Document which tasks were completed and which problems each fixed
+#### Session type extension
 
-2. Add Playwright / pytest E2E test: `e2e/test_drawing_session_option_a.py`
-   - Test: **vertex count correct after edit** — open a saved polyline for editing, assert vertex dots = actual vertex count (not double)
-   - Test: **cancel restores saved entity** — open for editing, cancel, assert saved entity is visible again
-   - Test: **save during edit updates entity** — open for editing, modify a point, save, assert updated entity visible (no duplicate)
-   - Test: **type-switch restores entity** — open polyline for editing, switch to circle type, assert polyline entity is visible again (session became "creating")
+Add a discriminant to `SavedShapeDragSession`:
+
+```typescript
+interface SavedShapeDragSession {
+  type: "whole-shape" | "vertex"; // new
+  shapeId: string;
+  vertexIndex: number | null; // only set when type === 'vertex'
+  originalDto: ShapeDto;
+  latestDto: ShapeDto;
+  lastDragCartesian: Cartesian3;
+  startScreenPosition: Cartesian2;
+  hasDragged: boolean;
+}
+```
+
+#### Vertex detection in `startDragCandidate`
+
+Vertex entities have `properties.vertexIndex` set by `SavedShapesService.createVertexEntitiesFromDto`. Read it to distinguish a vertex pick from a whole-shape pick:
+
+```typescript
+const pickedObject = this.pickSavedShapeTarget(viewer, position);
+const pickedEntity = pickedObject?.id as Entity | undefined;
+const rawVertexIndex = pickedEntity?.properties?.vertexIndex?.getValue(new JulianDate());
+const vertexIndex = typeof rawVertexIndex === "number" ? rawVertexIndex : null;
+
+this.dragSession = {
+  type: vertexIndex !== null ? "vertex" : "whole-shape",
+  vertexIndex,
+  shapeId,
+  originalDto: this.cloneShapeDto(savedShape.shapeDto),
+  latestDto: this.cloneShapeDto(savedShape.shapeDto),
+  lastDragCartesian: dragAnchor,
+  startScreenPosition: new Cartesian2(position.x, position.y),
+  hasDragged: false,
+};
+```
+
+#### Vertex position update in `updateDrag`
+
+Replace the existing single `translateShapeDtoByDelta` call with a mode-aware branch:
+
+```typescript
+const sourceDto = draggedShape?.shapeDto ?? this.dragSession.latestDto;
+const updated = this.dragSession.type === "vertex" && this.dragSession.vertexIndex !== null ? this.setVertexPosition(sourceDto, this.dragSession.vertexIndex, currentAnchor) : this.translateShapeDtoByDelta(sourceDto, delta);
+
+this.savedShapesService.updateShape(updated);
+this.syncFormForDraggedShapeIfMatched(updated);
+this.dragSession.latestDto = updated;
+this.dragSession.lastDragCartesian = currentAnchor;
+```
+
+> Note: for vertex drag, `delta` is not used — the vertex moves directly to the cursor map position.
+
+#### New private helper `setVertexPosition`
+
+```typescript
+private setVertexPosition(
+  dto: ShapeDto,
+  index: number,
+  cartesian: Cartesian3,
+): ShapeDto {
+  const geographic = Cartographic.fromCartesian(cartesian);
+  const newPoints = dto.points.map((point, i) =>
+    i !== index
+      ? point
+      : {
+          coordinates: {
+            latitude: CesiumMath.toDegrees(geographic.latitude),
+            longitude: CesiumMath.toDegrees(geographic.longitude),
+          },
+          altitude: { feet: geographic.height * FEET_PER_METER },
+        },
+  );
+  return { ...dto, points: newPoints };
+}
+```
+
+#### `finishDrag` — unchanged
+
+API save logic (`shapeApiService.update`) works for both session types — `session.latestDto` already has the final state.
 
 **Acceptance criteria:**
 
-- All new E2E tests pass
-- No regression in existing 3/3 B-017 tests
+- `npx tsc --noEmit` — 0 source errors
+- All unit tests green
+- Manually: drag a vertex dot on a saved polyline → only that vertex moves, rest of polyline stays
+- Whole-shape drag still works (click+drag the polyline body, not a vertex dot)
 
-> ✋ **STOP — run all tests + E2E, then wait for Ariel final approval before closing the branch.**
+**Unit tests to add in `saved-shapes-map-operations.service.spec.ts`:**
+
+| Test                                                                | Asserts                                                                     |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `startDragCandidate picks vertex entity`                            | session.type=vertex, session.vertexIndex=correct index                      |
+| `startDragCandidate picks non-vertex entity`                        | session.type=whole-shape, session.vertexIndex=null                          |
+| `updateDrag with vertex session`                                    | calls `setVertexPosition`; only target vertex moves; other points unchanged |
+| `updateDrag with whole-shape session`                               | calls `translateShapeDtoByDelta`; all vertices move                         |
+| `finishDrag calls API for vertex session`                           | API called with updated dto                                                 |
+| `setVertexPosition returns new dto with only target vertex updated` | other points unchanged                                                      |
+
+> ✋ **STOP — run tests, then wait for Ariel approval before proceeding to A7.**
+
+---
+
+### TASK-A7 — Update bugs.md + write E2E regression tests
 
 ---
 
 ## 4 — Task Order and Dependencies
 
 ```
-TASK-A1 (revert Option E)
+TASK-A1 ✅ DONE (revert Option E)
     │
     ✅ unit tests + E2E green → ✋ Ariel approval
     ▼
-TASK-A2 (remove vertex entities from SavedShapesService)
+TASK-A2 (revert A2 partial work — restore vertex entities in SavedShapesService)
     │
     ✅ unit tests green → ✋ Ariel approval
     ▼
-TASK-A3 (create DrawingSessionService)
+TASK-A3 (create DrawingSessionService)   ← P-01, P-02, P-03, P-04, P-05, P-06 fixed here
     │
     ✅ unit tests green → ✋ Ariel approval
     │
@@ -540,7 +667,11 @@ TASK-A3 (create DrawingSessionService)
               │
               ✅ unit tests + E2E green → ✋ Ariel approval
               ▼
-         TASK-A6 (bugs.md + E2E tests)
+         TASK-A6 (vertex drag for saved shapes — R-02 new feature)
+              │
+              ✅ unit tests green → ✋ Ariel approval
+              ▼
+         TASK-A7 (bugs.md + E2E tests)
               │
               ✅ all tests + E2E green → ✋ Ariel final approval
 ```
@@ -551,46 +682,51 @@ A4 and A5 can be done in parallel after A3.
 
 ## 5 — Files Touched
 
-| File                                                       | Task   | Change type                             |
-| ---------------------------------------------------------- | ------ | --------------------------------------- |
-| `src/app/services/draw-tool.service.ts`                    | A1     | Revert (remove Option E additions)      |
-| `src/app/components/map/map.component.ts`                  | A1, A4 | Revert + delegate to session service    |
-| `src/app/services/saved-shapes.service.ts`                 | A2     | Remove vertex entity creation           |
-| `src/app/services/drawing-session.service.ts`              | A3     | **NEW**                                 |
-| `src/app/components/edit-draw/edit-draw.component.ts`      | A5     | Delegate cancel/save to session service |
-| `plan/bugs.md`                                             | A6     | Status update                           |
-| `e2e/test_drawing_session_option_a.py`                     | A6     | **NEW**                                 |
-| `src/app/services/drawing-session.service.spec.ts`         | A3     | **NEW**                                 |
-| `src/app/services/saved-shapes.service.spec.ts`            | A2     | Test for no vertex entities             |
-| `src/app/components/map/map.component.spec.ts`             | A4     | Test delegation to session service      |
-| `src/app/components/edit-draw/edit-draw.component.spec.ts` | A5     | Test cancel/save paths                  |
+| File                                                           | Task      | Change type                                                 |
+| -------------------------------------------------------------- | --------- | ----------------------------------------------------------- |
+| `src/app/services/draw-tool.service.ts`                        | A1 ✅     | Revert (Option E removed)                                   |
+| `src/app/components/map/map.component.ts`                      | A1 ✅, A4 | Revert done; A4 delegates to session service                |
+| `src/app/services/saved-shapes.service.ts`                     | A2        | Revert A2 partial — restore vertex entity creation          |
+| `src/app/services/saved-shapes.service.spec.ts`                | A2        | Revert A2 spec changes — restore original vertex assertions |
+| `src/app/services/drawing-session.service.ts`                  | A3        | **NEW**                                                     |
+| `src/app/services/drawing-session.service.spec.ts`             | A3        | **NEW**                                                     |
+| `src/app/components/map/map.component.spec.ts`                 | A4        | Test delegation to session service                          |
+| `src/app/components/edit-draw/edit-draw.component.ts`          | A5        | Delegate cancel/save to session service                     |
+| `src/app/components/edit-draw/edit-draw.component.spec.ts`     | A5        | Test cancel/save paths                                      |
+| `src/app/services/saved-shapes-map-operations.service.ts`      | A6        | Add vertex-level drag                                       |
+| `src/app/services/saved-shapes-map-operations.service.spec.ts` | A6        | Tests for vertex vs whole-shape drag                        |
+| `plan/bugs.md`                                                 | A7        | Status update                                               |
+| `e2e/test_drawing_session_option_a.py`                         | A7        | **NEW**                                                     |
 
 ---
 
 ## 6 — Definition of Done
 
-| Criterion                           | Check                                                                        |
-| ----------------------------------- | ---------------------------------------------------------------------------- |
-| `npx tsc --noEmit` clean            | 0 errors                                                                     |
-| Unit tests baseline                 | ≥ 336 tests green                                                            |
-| E2E baseline (B-017)                | 3/3 green                                                                    |
-| E2E new tests                       | 4/4 green                                                                    |
-| P-01 (double vertices)              | ✅ fixed — SavedShapesService no longer creates vertex entities              |
-| P-02 (vertex drag broken)           | ✅ fixed — only DrawToolService vertex entities exist                        |
-| P-03 (entity duplication)           | ✅ fixed — session hides saved entity on startEditing                        |
-| P-04 (style mutation fragile)       | ✅ fixed — no more borrowed entity mutation                                  |
-| P-05 (cancel incomplete)            | ✅ fixed — DrawingSessionService.cancel always restores                      |
-| P-06 (startDrawing dual purpose)    | ✅ fixed — session service calls startDrawing with clear intent              |
-| P-07 (handler conflict)             | ✅ partial — `canInteractWithSavedShapes` returns false while session active |
-| No new TypeScript `any` casts       | Verified                                                                     |
-| No `console.error` left in new code | Verified                                                                     |
+| Criterion                                     | Check                                                                                                            |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `npx tsc --noEmit` clean                      | 0 source errors                                                                                                  |
+| Unit tests baseline                           | ≥ 336 tests green                                                                                                |
+| E2E baseline (B-017)                          | 3/3 green                                                                                                        |
+| E2E new tests                                 | 5/5 green                                                                                                        |
+| P-01 (double vertices)                        | ✅ fixed — DrawingSessionService.startEditing hides saved vertex entities before DrawToolService creates its own |
+| P-02 (vertex drag broken)                     | ✅ fixed — saved vertex entities are hidden during form editing; only DrawToolService’s are pickable             |
+| P-03 (entity duplication)                     | ✅ fixed — session hides saved entity on startEditing                                                            |
+| P-04 (style mutation fragile)                 | ✅ fixed — no more borrowed entity mutation                                                                      |
+| P-05 (cancel incomplete)                      | ✅ fixed — DrawingSessionService.cancel always calls showShape + cancelDrawing                                   |
+| P-06 (startDrawing dual purpose)              | ✅ fixed — session service calls startDrawing with clear intent                                                  |
+| P-07 (handler conflict)                       | ✅ partial — `canInteractWithSavedShapes` returns false while session active                                     |
+| R-01 (vertex dots on saved shapes)            | ✅ preserved — SavedShapesService keeps createVertexEntitiesFromDto                                              |
+| R-02 (individual vertex drag on saved shapes) | ✅ new feature — SavedShapesMapOperationsService vertex drag session                                             |
+| No new TypeScript `any` casts                 | Verified                                                                                                         |
+| No `console.error` left in new code           | Verified                                                                                                         |
 
 ---
 
 ## 7 — What is NOT in scope
 
 - Full P-07 fix (merging the two `ScreenSpaceEventHandler` instances into one) — that requires Option C's `InputHandlerService` and is a separate sprint
-- Shape drag-while-editing on saved shapes — separate feature
+- Shape drag-while-editing on saved shapes (while form is open and DrawToolService is active) — separate feature
+- Vertex drag on circle or text shapes — circles have no vertices; text has a single anchor that whole-shape drag handles
 - Any UI changes to `EditDrawComponent` template
 - Any new API endpoints
 

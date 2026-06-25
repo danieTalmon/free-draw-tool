@@ -17,6 +17,7 @@ import { MapService } from '@services/map.service';
 import { ShapeApiService } from '@services/shape-api.service';
 import { SavedShapesService } from '@services/saved-shapes.service';
 import { DrawToolService } from '@services/draw-tool.service';
+import { DrawingSessionService } from '@services/drawing-session.service';
 import { Subject, startWith, takeUntil } from 'rxjs';
 import { MapOperationsEnum } from '@models/map-operations-enum';
 import { SHAPE_TYPE_TO_FORM_TYPE_TITLE } from '@consts/edit-draw-form.consts';
@@ -42,6 +43,7 @@ export class EditDrawComponent implements OnDestroy {
   private readonly shapeApiService = inject(ShapeApiService);
   private readonly savedShapesService = inject(SavedShapesService);
   private readonly drawToolService = inject(DrawToolService);
+  private readonly drawingSessionService = inject(DrawingSessionService);
   private readonly drawTypeSignal = this.mapService.editDrawShapeSignal;
   private readonly shapeTypeTitleSignal = computed(() => {
     const drawType = this.drawTypeSignal();
@@ -184,18 +186,12 @@ export class EditDrawComponent implements OnDestroy {
   }
 
   /**
-   * Cancel editing - revert to last saved state or reset form
+   * Cancel editing — delegates to DrawingSessionService which restores any
+   * hidden saved entity and returns the map to idle state.
    */
   readonly cancel = (): void => {
     this.saveError = null;
-
-    if (this.shapeFormService.isSaved) {
-      this.shapeFormService.revertToLastSaved();
-      this.drawToolService.loadPositionsFromForm();
-      return;
-    }
-
-    this.drawToolService.clearTempEntityAfterSave();
+    this.drawingSessionService.cancel();
   };
 
   /**
@@ -217,6 +213,8 @@ export class EditDrawComponent implements OnDestroy {
           // Clear the temporary drawing entity and reset for new shape
           // This also initializes minimum points for the current shape type
           this.drawToolService.clearTempEntityAfterSave();
+          // Notify the session that the save completed (sets state to idle).
+          this.drawingSessionService.confirmSave();
 
           console.log('Shape saved successfully:', savedShape);
         },

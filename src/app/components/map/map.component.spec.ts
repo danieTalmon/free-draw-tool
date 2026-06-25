@@ -12,6 +12,7 @@ import { MapComponent } from '@components/map/map.component';
 import { DrawToolService } from '@services/draw-tool.service';
 import { MapService } from '@services/map.service';
 import { SavedShapesService } from '@services/saved-shapes.service';
+import { DrawingSessionService } from '@services/drawing-session.service';
 import { SavedShapeEntity } from '@models/saved-shape-entity.model';
 import { ShapeApiService } from '@services/shape-api.service';
 import { EditShapeFacadeService } from '@services/edit-shape-facade.service';
@@ -19,6 +20,7 @@ import { SavedShapesMapOperationsService } from '@services/saved-shapes-map-oper
 import { MapOperationsEnum } from '@models/map-operations-enum';
 import { ShapeDto } from '@models/shape.model';
 import { OutlineType } from '@models/draw-event.model';
+import { DrawMapOption } from '@models/user-preferences';
 
 describe('MapComponent', () => {
   let component: MapComponent;
@@ -29,6 +31,7 @@ describe('MapComponent', () => {
   let shapeApiService: jasmine.SpyObj<ShapeApiService>;
   let editShapeFacadeService: jasmine.SpyObj<EditShapeFacadeService>;
   let savedShapesMapOperationsService: jasmine.SpyObj<SavedShapesMapOperationsService>;
+  let drawingSessionService: jasmine.SpyObj<DrawingSessionService>;
 
   const createMockSavedShape = (): SavedShapeEntity => {
     const dto: ShapeDto = {
@@ -82,6 +85,20 @@ describe('MapComponent', () => {
       'setCurrentShapeType',
     ]);
 
+    const drawingSessionSpy = jasmine.createSpyObj(
+      'DrawingSessionService',
+      ['startCreating', 'startEditing', 'cancel', 'confirmSave', 'switchType'],
+      { isActive: () => false },
+    );
+    // Make session spy simulate the mapService side-effects so signal-based
+    // assertions (currentDrawType, showEditForm) remain meaningful.
+    drawingSessionSpy.startCreating.and.callFake((type: DrawMapOption) => {
+      mapService.setEditDrawShape(type);
+    });
+    drawingSessionSpy.cancel.and.callFake(() => {
+      mapService.setEditDrawShape(MapOperationsEnum.DRAW_NONE);
+    });
+
     const savedShapesMapOperationsSpy = jasmine.createSpyObj(
       'SavedShapesMapOperationsService',
       [
@@ -106,6 +123,7 @@ describe('MapComponent', () => {
         { provide: SavedShapesService, useValue: savedShapesSpy },
         { provide: ShapeApiService, useValue: shapeApiSpy },
         { provide: EditShapeFacadeService, useValue: editFacadeSpy },
+        { provide: DrawingSessionService, useValue: drawingSessionSpy },
         {
           provide: SavedShapesMapOperationsService,
           useValue: savedShapesMapOperationsSpy,
@@ -131,6 +149,9 @@ describe('MapComponent', () => {
     savedShapesMapOperationsService = TestBed.inject(
       SavedShapesMapOperationsService,
     ) as jasmine.SpyObj<SavedShapesMapOperationsService>;
+    drawingSessionService = TestBed.inject(
+      DrawingSessionService,
+    ) as jasmine.SpyObj<DrawingSessionService>;
   });
 
   it('should create', () => {
@@ -189,10 +210,10 @@ describe('MapComponent', () => {
       expect(component.isEditMode).toBeFalse();
     });
 
-    it('should cancel drawing when exiting edit mode', () => {
+    it('should cancel the active session when exiting edit mode', () => {
       component.isEditMode = true;
       component.toggleEditMode();
-      expect(drawToolService.cancelDrawing).toHaveBeenCalled();
+      expect(drawingSessionService.cancel).toHaveBeenCalled();
     });
 
     it('should set draw type to DRAW_NONE when exiting edit mode', () => {
@@ -233,12 +254,12 @@ describe('MapComponent', () => {
     it('should not start drawing when not in edit mode', () => {
       component.isEditMode = false;
       component.startDrawing(MapOperationsEnum.DRAW_CIRCLE);
-      expect(drawToolService.startDrawing).not.toHaveBeenCalled();
+      expect(drawingSessionService.startCreating).not.toHaveBeenCalled();
     });
 
-    it('should start drawing with specified type', () => {
+    it('should delegate to drawingSessionService.startCreating with specified type', () => {
       component.startDrawing(MapOperationsEnum.DRAW_CIRCLE);
-      expect(drawToolService.startDrawing).toHaveBeenCalledWith(
+      expect(drawingSessionService.startCreating).toHaveBeenCalledWith(
         MapOperationsEnum.DRAW_CIRCLE,
       );
     });
@@ -264,7 +285,7 @@ describe('MapComponent', () => {
     it('should toggle off when clicking same type', () => {
       component.currentDrawType = MapOperationsEnum.DRAW_CIRCLE;
       component.startDrawing(MapOperationsEnum.DRAW_CIRCLE);
-      expect(drawToolService.cancelDrawing).toHaveBeenCalled();
+      expect(drawingSessionService.cancel).toHaveBeenCalled();
       expect(component.currentDrawType).toBe(MapOperationsEnum.DRAW_NONE);
       expect(component.showEditForm).toBeFalse();
     });
@@ -346,94 +367,43 @@ describe('MapComponent', () => {
   });
 
   describe('Open shape for editing', () => {
-    it('should NOT hide the saved shape entity (B-017 Option D: entity stays visible during editing)', () => {
+    it('should delegate to drawingSessionService.startEditing (Option A)', () => {
       const savedShape = createMockSavedShape();
       component.isEditMode = true;
       component['openShapeForEditing'](savedShape);
 
-      expect(savedShapesService.hideShape).not.toHaveBeenCalled();
-    });
-
-    it('should set draw type from shape', () => {
-      const savedShape = createMockSavedShape();
-      component.isEditMode = true;
-      component['openShapeForEditing'](savedShape);
-
-      expect(component.currentDrawType).toBe(MapOperationsEnum.DRAW_CIRCLE);
-    });
-
-    it('should show edit form', () => {
-      const savedShape = createMockSavedShape();
-      component.isEditMode = true;
-      component['openShapeForEditing'](savedShape);
-
-      expect(component.showEditForm).toBeTrue();
-    });
-
-    it('should load shape into facade service', () => {
-      const savedShape = createMockSavedShape();
-      component.isEditMode = true;
-      component['openShapeForEditing'](savedShape);
-
-      expect(editShapeFacadeService.fromShapeDto).toHaveBeenCalledWith(
-        savedShape.shapeDto,
-      );
-      expect(editShapeFacadeService.markAsSaved).toHaveBeenCalledWith(
-        savedShape.shapeDto,
+      expect(drawingSessionService.startEditing).toHaveBeenCalledWith(
+        savedShape,
       );
     });
 
-    it('should start drawing mode', () => {
+    it('should not call drawToolService or editShapeFacadeService directly', () => {
       const savedShape = createMockSavedShape();
       component.isEditMode = true;
       component['openShapeForEditing'](savedShape);
 
-      expect(drawToolService.startDrawing).toHaveBeenCalledWith(
-        MapOperationsEnum.DRAW_CIRCLE,
-        { preserveFormState: true },
-      );
-    });
-
-    it('should load positions from form', () => {
-      const savedShape = createMockSavedShape();
-      component.isEditMode = true;
-      component['openShapeForEditing'](savedShape);
-
-      expect(drawToolService.loadPositionsFromForm).toHaveBeenCalled();
-    });
-
-    it('should start drawing before loading DTO into facade', () => {
-      const savedShape = createMockSavedShape();
-      component.isEditMode = true;
-      const callOrder: string[] = [];
-
-      drawToolService.startDrawing.and.callFake(() => {
-        callOrder.push('startDrawing');
-      });
-      editShapeFacadeService.fromShapeDto.and.callFake(() => {
-        callOrder.push('fromShapeDto');
-      });
-
-      component['openShapeForEditing'](savedShape);
-
-      expect(callOrder[0]).toBe('startDrawing');
-      expect(callOrder[1]).toBe('fromShapeDto');
+      expect(drawToolService.startDrawing).not.toHaveBeenCalled();
+      expect(editShapeFacadeService.fromShapeDto).not.toHaveBeenCalled();
     });
   });
 
   describe('Saved shape interaction in edit mode', () => {
-    it('should allow saved shape interaction when edit mode is enabled and no tool is selected', () => {
+    it('should allow saved shape interaction when edit mode is enabled and no session is active', () => {
       component.isEditMode = true;
       component.currentDrawType = MapOperationsEnum.DRAW_NONE;
 
       expect(component['canInteractWithSavedShapes']()).toBeTrue();
     });
 
-    it('should allow saved shape interaction while a draw tool is selected in edit mode', () => {
+    it('should block saved shape interaction when a drawing session is active', () => {
       component.isEditMode = true;
-      component.currentDrawType = MapOperationsEnum.DRAW_POLYLINE;
+      // Simulate an active session by overriding the spy's isActive accessor.
+      Object.defineProperty(drawingSessionService, 'isActive', {
+        get: () => () => true,
+        configurable: true,
+      });
 
-      expect(component['canInteractWithSavedShapes']()).toBeTrue();
+      expect(component['canInteractWithSavedShapes']()).toBeFalse();
     });
 
     it('should block saved shape interaction outside edit mode', () => {

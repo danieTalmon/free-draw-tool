@@ -18,6 +18,7 @@ import { MapService } from '@services/map.service';
 import { ShapeApiService } from '@services/shape-api.service';
 import { SavedShapesService } from '@services/saved-shapes.service';
 import { DrawToolService } from '@services/draw-tool.service';
+import { DrawingSessionService } from '@services/drawing-session.service';
 import { MapOperationsEnum } from '@models/map-operations-enum';
 import { OutlineType } from '@models/draw-event.model';
 import { ShapeDto } from '@models/shape.model';
@@ -30,6 +31,7 @@ describe('EditDrawComponent', () => {
   let shapeApiService: ShapeApiService;
   let savedShapesService: jasmine.SpyObj<SavedShapesService>;
   let drawToolService: jasmine.SpyObj<DrawToolService>;
+  let drawingSessionService: jasmine.SpyObj<DrawingSessionService>;
 
   beforeEach(async () => {
     const savedShapesSpy = jasmine.createSpyObj('SavedShapesService', [
@@ -41,6 +43,12 @@ describe('EditDrawComponent', () => {
       'initialize',
       'loadPositionsFromForm',
     ]);
+
+    const drawingSessionSpy = jasmine.createSpyObj(
+      'DrawingSessionService',
+      ['cancel', 'confirmSave', 'startCreating', 'startEditing'],
+      { isActive: () => false },
+    );
 
     await TestBed.configureTestingModule({
       imports: [
@@ -55,6 +63,7 @@ describe('EditDrawComponent', () => {
         ShapeApiService,
         { provide: SavedShapesService, useValue: savedShapesSpy },
         { provide: DrawToolService, useValue: drawToolSpy },
+        { provide: DrawingSessionService, useValue: drawingSessionSpy },
       ],
     }).compileComponents();
 
@@ -69,6 +78,9 @@ describe('EditDrawComponent', () => {
     drawToolService = TestBed.inject(
       DrawToolService,
     ) as jasmine.SpyObj<DrawToolService>;
+    drawingSessionService = TestBed.inject(
+      DrawingSessionService,
+    ) as jasmine.SpyObj<DrawingSessionService>;
 
     fixture.detectChanges();
   });
@@ -187,64 +199,30 @@ describe('EditDrawComponent', () => {
       expect(component.saveError).toBeNull();
     });
 
-    it('should reset unsaved create-mode drawing to minimum points', () => {
+    it('should cancel the drawing session when in create mode', () => {
       spyOnProperty(editShapeFacadeService, 'isSaved', 'get').and.returnValue(
         false,
       );
 
       component.cancel();
 
-      expect(drawToolService.clearTempEntityAfterSave).toHaveBeenCalled();
+      expect(drawingSessionService.cancel).toHaveBeenCalled();
     });
 
-    it('should revert saved shape edits in the form', () => {
-      spyOnProperty(editShapeFacadeService, 'isSaved', 'get').and.returnValue(
-        true,
-      );
-      spyOn(editShapeFacadeService, 'revertToLastSaved');
-
-      component.cancel();
-
-      expect(editShapeFacadeService.revertToLastSaved).toHaveBeenCalled();
-    });
-
-    it('should reload saved shape positions on the map after cancel', () => {
+    it('should cancel the drawing session when editing a saved shape', () => {
       spyOnProperty(editShapeFacadeService, 'isSaved', 'get').and.returnValue(
         true,
       );
 
       component.cancel();
 
-      expect(drawToolService.loadPositionsFromForm).toHaveBeenCalled();
+      expect(drawingSessionService.cancel).toHaveBeenCalled();
     });
 
-    it('should keep save disabled when opening saved shape and after cancel', () => {
-      const savedDto: ShapeDto = {
-        id: 'saved-1',
-        name: 'Saved Shape',
-        shapeType: 'DRAW_CIRCLE',
-        points: [
-          {
-            coordinates: { latitude: 32.0, longitude: 34.0 },
-            altitude: { feet: 0 },
-          },
-        ],
-        lineType: OutlineType.solid,
-        lineWidth: 2,
-        lineColor: '#00ffff',
-      };
-
-      mapService.setEditDrawShape(MapOperationsEnum.DRAW_CIRCLE);
-      editShapeFacadeService.fromShapeDto(savedDto);
-      editShapeFacadeService.markAsSaved(savedDto);
-
-      expect(component.canSave).toBeFalse();
-
-      component.shapeForm.patchValue({ name: 'Edited Name' });
-      expect(component.canSave).toBeTrue();
-
+    it('should always delegate to drawingSessionService.cancel regardless of isSaved', () => {
+      // Verify single-path delegation regardless of whether shape is saved or not.
       component.cancel();
-      expect(component.canSave).toBeFalse();
+      expect(drawingSessionService.cancel).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -313,6 +291,13 @@ describe('EditDrawComponent', () => {
       // clearTempEntityAfterSave internally calls resetForm and initializeMinimumPoints
       expect(drawToolService.clearTempEntityAfterSave).toHaveBeenCalled();
       expect(editShapeFacadeService.clearSavedState).toHaveBeenCalled();
+    }));
+
+    it('should call drawingSessionService.confirmSave after successful save', fakeAsync(() => {
+      spyOn(shapeApiService, 'save').and.returnValue(of(mockShapeDto));
+      component.save();
+      tick(300);
+      expect(drawingSessionService.confirmSave).toHaveBeenCalled();
     }));
 
     it('should add shape to saved shapes service on success', fakeAsync(() => {
