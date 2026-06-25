@@ -202,10 +202,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   toggleEditMode(): void {
     this.isEditMode = !this.isEditMode;
     if (!this.isEditMode) {
-      // Cancel the active session (restores any hidden entity, stops drawing).
       this.drawingSessionService.cancel();
-      // Show all shapes as a safety net (covers edge cases where hide was called
-      // outside the session lifecycle, e.g. on viewer init).
       this.savedShapesService.showAllShapes();
     }
   }

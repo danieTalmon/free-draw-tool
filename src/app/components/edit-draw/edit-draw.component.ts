@@ -185,13 +185,16 @@ export class EditDrawComponent implements OnDestroy {
     return this.shapeFormService.unsavedChangesSignal() && !this.isSaving;
   }
 
-  /**
-   * Cancel editing — delegates to DrawingSessionService which restores any
-   * hidden saved entity and returns the map to idle state.
-   */
   readonly cancel = (): void => {
     this.saveError = null;
-    this.drawingSessionService.cancel();
+    if (this.shapeFormService.isSaved) {
+      this.shapeFormService.revertToLastSaved();
+      this.drawToolService.loadPositionsFromForm();
+    } else {
+      this.drawingSessionService.startCreating(
+        this.drawingSessionService.shapeType(),
+      );
+    }
   };
 
   /**
@@ -209,13 +212,9 @@ export class EditDrawComponent implements OnDestroy {
       .subscribe({
         next: (savedShape) => {
           this.isSaving = false;
-
-          // Clear the temporary drawing entity and reset for new shape
-          // This also initializes minimum points for the current shape type
-          this.drawToolService.clearTempEntityAfterSave();
-          // Notify the session that the save completed (sets state to idle).
-          this.drawingSessionService.confirmSave();
-
+          this.drawingSessionService.startCreating(
+            this.drawingSessionService.shapeType(),
+          );
           console.log('Shape saved successfully:', savedShape);
         },
         error: (error) => {

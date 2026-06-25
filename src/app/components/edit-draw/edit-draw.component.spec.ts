@@ -47,7 +47,10 @@ describe('EditDrawComponent', () => {
     const drawingSessionSpy = jasmine.createSpyObj(
       'DrawingSessionService',
       ['cancel', 'confirmSave', 'startCreating', 'startEditing'],
-      { isActive: () => false },
+      {
+        isActive: () => false,
+        shapeType: () => MapOperationsEnum.DRAW_CIRCLE,
+      },
     );
 
     await TestBed.configureTestingModule({
@@ -199,30 +202,28 @@ describe('EditDrawComponent', () => {
       expect(component.saveError).toBeNull();
     });
 
-    it('should cancel the drawing session when in create mode', () => {
+    it('should revert form to saved state when editing a saved shape', () => {
+      spyOnProperty(editShapeFacadeService, 'isSaved', 'get').and.returnValue(
+        true,
+      );
+      spyOn(editShapeFacadeService, 'revertToLastSaved');
+
+      component.cancel();
+
+      expect(editShapeFacadeService.revertToLastSaved).toHaveBeenCalled();
+      expect(drawToolService.loadPositionsFromForm).toHaveBeenCalled();
+    });
+
+    it('should start a fresh creating session when cancelling a new shape', () => {
       spyOnProperty(editShapeFacadeService, 'isSaved', 'get').and.returnValue(
         false,
       );
 
       component.cancel();
 
-      expect(drawingSessionService.cancel).toHaveBeenCalled();
-    });
-
-    it('should cancel the drawing session when editing a saved shape', () => {
-      spyOnProperty(editShapeFacadeService, 'isSaved', 'get').and.returnValue(
-        true,
+      expect(drawingSessionService.startCreating).toHaveBeenCalledWith(
+        MapOperationsEnum.DRAW_CIRCLE,
       );
-
-      component.cancel();
-
-      expect(drawingSessionService.cancel).toHaveBeenCalled();
-    });
-
-    it('should always delegate to drawingSessionService.cancel regardless of isSaved', () => {
-      // Verify single-path delegation regardless of whether shape is saved or not.
-      component.cancel();
-      expect(drawingSessionService.cancel).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -283,21 +284,13 @@ describe('EditDrawComponent', () => {
       tick(300);
     }));
 
-    it('should clear temp entity and saved state after save', fakeAsync(() => {
-      spyOn(shapeApiService, 'save').and.returnValue(of(mockShapeDto));
-      spyOn(editShapeFacadeService, 'clearSavedState');
-      component.save();
-      tick(300);
-      // clearTempEntityAfterSave internally calls resetForm and initializeMinimumPoints
-      expect(drawToolService.clearTempEntityAfterSave).toHaveBeenCalled();
-      expect(editShapeFacadeService.clearSavedState).toHaveBeenCalled();
-    }));
-
-    it('should call drawingSessionService.confirmSave after successful save', fakeAsync(() => {
+    it('should start a fresh creating session after save', fakeAsync(() => {
       spyOn(shapeApiService, 'save').and.returnValue(of(mockShapeDto));
       component.save();
       tick(300);
-      expect(drawingSessionService.confirmSave).toHaveBeenCalled();
+      expect(drawingSessionService.startCreating).toHaveBeenCalledWith(
+        MapOperationsEnum.DRAW_CIRCLE,
+      );
     }));
 
     it('should add shape to saved shapes service on success', fakeAsync(() => {
@@ -305,13 +298,6 @@ describe('EditDrawComponent', () => {
       component.save();
       tick(300);
       expect(savedShapesService.addShape).toHaveBeenCalledWith(mockShapeDto);
-    }));
-
-    it('should clear temp entity after save', fakeAsync(() => {
-      spyOn(shapeApiService, 'save').and.returnValue(of(mockShapeDto));
-      component.save();
-      tick(300);
-      expect(drawToolService.clearTempEntityAfterSave).toHaveBeenCalled();
     }));
 
     it('should set isSaving to false on success', fakeAsync(() => {
@@ -469,14 +455,15 @@ describe('EditDrawComponent', () => {
       });
     });
 
-    it('should call clearTempEntityAfterSave which resets form for new shape', fakeAsync(() => {
+    it('should start a fresh creating session after save to reset form', fakeAsync(() => {
       spyOn(shapeApiService, 'save').and.returnValue(of(bugFixMockShapeDto));
 
       component.save();
       tick(300);
 
-      // clearTempEntityAfterSave internally calls resetForm and initializeMinimumPoints
-      expect(drawToolService.clearTempEntityAfterSave).toHaveBeenCalled();
+      expect(drawingSessionService.startCreating).toHaveBeenCalledWith(
+        MapOperationsEnum.DRAW_CIRCLE,
+      );
     }));
 
     it('should clear saved state after successful save', fakeAsync(() => {

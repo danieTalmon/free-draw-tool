@@ -88,7 +88,10 @@ describe('MapComponent', () => {
     const drawingSessionSpy = jasmine.createSpyObj(
       'DrawingSessionService',
       ['startCreating', 'startEditing', 'cancel', 'confirmSave', 'switchType'],
-      { isActive: () => false },
+      {
+        isActive: () => false,
+        shapeType: () => MapOperationsEnum.DRAW_NONE,
+      },
     );
     // Make session spy simulate the mapService side-effects so signal-based
     // assertions (currentDrawType, showEditForm) remain meaningful.
