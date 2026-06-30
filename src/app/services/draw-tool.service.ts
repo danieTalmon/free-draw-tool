@@ -30,6 +30,7 @@ import {
   cartesian3ToMapLocation,
   mapLocationToCartesian3,
 } from '@helpers/cesium.helpers';
+import { SavedShapesMapOperationsService } from '@services/saved-shapes-map-operations.service';
 
 interface DrawToolState {
   type: DrawMapOption;
@@ -49,6 +50,9 @@ interface StartDrawingOptions {
 export class DrawToolService implements OnDestroy {
   private readonly editShapeFacadeService = inject(EditShapeFacadeService);
   private readonly ngZone = inject(NgZone);
+  private readonly savedShapesMapOperationsService = inject(
+    SavedShapesMapOperationsService,
+  );
 
   private positions: Cartesian3[] = [];
   private previewPosition: Cartesian3 | null = null;
@@ -103,6 +107,9 @@ export class DrawToolService implements OnDestroy {
   private vertexEntities: Entity[] = [];
   private draggedSavedShapeId: string | null = null;
   private polygonPreviewInsertAfterIndex: number | null = null;
+  private savedShapeCanInteract: (() => boolean) | null = null;
+  private savedShapeOnDragStarted?: () => void;
+  private savedShapeOnLeftClick?: () => void;
 
   constructor() {
     this.bindFormChanges();
@@ -206,11 +213,8 @@ export class DrawToolService implements OnDestroy {
       return;
     }
 
-    // Destroy any existing mouse handlers before creating new ones
-    if (this.handler) {
-      this.handler.destroy();
-      this.handler = null;
-    }
+    // Keep the shared handler alive across drawing sessions.
+    // It is reused for saved-shape interaction bindings and only destroyed on service destroy.
 
     // Cleanup previous drawing session
     if (this.shapeEntity != null) {
@@ -353,37 +357,96 @@ export class DrawToolService implements OnDestroy {
     }
   };
 
+  private readonly registerInteractionHandlers = (
+    eventHandler: ScreenSpaceEventHandler,
+    handlers: {
+      leftDown: (movement: { position: Cartesian2 }) => void;
+      mouseMove: (movement: { endPosition: Cartesian2 }) => void;
+      leftUp: (movement: { position: Cartesian2 }) => void;
+      leftClick: (movement: { position: Cartesian2 }) => void;
+    },
+  ): void => {
+    eventHandler.setInputAction(
+      handlers.leftDown,
+      ScreenSpaceEventType.LEFT_DOWN,
+    );
+    eventHandler.setInputAction(
+      handlers.mouseMove,
+      ScreenSpaceEventType.MOUSE_MOVE,
+    );
+    eventHandler.setInputAction(handlers.leftUp, ScreenSpaceEventType.LEFT_UP);
+    eventHandler.setInputAction(
+      handlers.leftClick,
+      ScreenSpaceEventType.LEFT_CLICK,
+    );
+  };
+
+  readonly bindSavedShapeInteractionHandlers = (
+    viewer: Viewer | null,
+    canInteract: () => boolean,
+    onDragStarted?: () => void,
+    onLeftClick?: () => void,
+  ): void => {
+    if (!viewer?.scene.canvas) {
+      return;
+    }
+
+    this.savedShapeCanInteract = canInteract;
+    this.savedShapeOnDragStarted = onDragStarted;
+    this.savedShapeOnLeftClick = onLeftClick;
+
+    if (!this.handler) {
+      this.handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
+      this.registerInteractionHandlers(this.handler, {
+        leftDown: this.handleCombinedMouseDown,
+        mouseMove: this.handleCombinedMouseMove,
+        leftUp: this.handleCombinedMouseUp,
+        leftClick: this.handleCombinedMouseClick,
+      });
+    }
+  };
+
   private readonly setupMouseHandlers = (): void => {
     if (!this.viewer?.scene.canvas) {
       return;
     }
 
     const scene = this.viewer.scene;
-    this.handler = new ScreenSpaceEventHandler(scene.canvas);
+    if (!this.handler) {
+      this.handler = new ScreenSpaceEventHandler(scene.canvas);
+      this.registerInteractionHandlers(this.handler, {
+        leftDown: this.handleCombinedMouseDown,
+        mouseMove: this.handleCombinedMouseMove,
+        leftUp: this.handleCombinedMouseUp,
+        leftClick: this.handleCombinedMouseClick,
+      });
+    }
+  };
 
-    this.handler.setInputAction(
-      this.handleMouseDown,
-      ScreenSpaceEventType.LEFT_DOWN,
-    );
-    this.handler.setInputAction(
-      this.handleMouseMove,
-      ScreenSpaceEventType.MOUSE_MOVE,
-    );
-    this.handler.setInputAction(
-      this.handleMouseUp,
-      ScreenSpaceEventType.LEFT_UP,
-    );
-    this.handler.setInputAction(
-      this.handleClick,
-      ScreenSpaceEventType.LEFT_CLICK,
-    );
+  private readonly handleCombinedMouseDown = (movement: {
+    position: Cartesian2;
+  }): void => {
+    if (this.state.isDrawing && this.viewer) {
+      this.handleMouseDown(movement);
+      return;
+    }
+
+    if (this.savedShapeCanInteract?.() && this.viewer) {
+      const started = this.savedShapesMapOperationsService.startDragCandidate(
+        this.viewer,
+        movement.position,
+      );
+      if (started) {
+        this.pointerDraggedSinceMouseDown = false;
+        this.savedShapeOnDragStarted?.();
+      }
+    }
   };
 
   private readonly handleMouseDown = (movement: {
     position: Cartesian2;
   }): void => {
     if (!this.state.isDrawing || !this.viewer) return;
-
     const pickedObject = this.viewer.scene.pick(movement.position);
     const pickedEntity = pickedObject?.id as Entity | undefined;
     const cartesian3 = this.pickMapPosition(movement.position);
@@ -454,6 +517,22 @@ export class DrawToolService implements OnDestroy {
 
     return Cartesian3.distance(this.positions[0], position) <= this.radius;
   }
+
+  private readonly handleCombinedMouseMove = (movement: {
+    endPosition: Cartesian2;
+  }): void => {
+    if (this.state.isDrawing && this.viewer) {
+      this.handleMouseMove(movement);
+      return;
+    }
+
+    if (this.savedShapeCanInteract?.() && this.viewer) {
+      this.savedShapesMapOperationsService.updateDrag(
+        this.viewer,
+        movement.endPosition,
+      );
+    }
+  };
 
   private readonly handleMouseMove = (movement: {
     endPosition: Cartesian2;
@@ -548,6 +627,19 @@ export class DrawToolService implements OnDestroy {
     }
   };
 
+  private readonly handleCombinedMouseUp = (movement: {
+    position: Cartesian2;
+  }): void => {
+    if (this.state.isDrawing && this.viewer) {
+      this.handleMouseUp(movement);
+      return;
+    }
+
+    if (this.savedShapeCanInteract?.() && this.viewer) {
+      this.savedShapesMapOperationsService.finishDrag();
+    }
+  };
+
   private readonly handleMouseUp = (movement: {
     position: Cartesian2;
   }): void => {
@@ -607,6 +699,23 @@ export class DrawToolService implements OnDestroy {
       if (this.state.isDragging) {
         this.state.isDragging = false;
       }
+    }
+  };
+
+  private readonly handleCombinedMouseClick = (movement: {
+    position: Cartesian2;
+  }): void => {
+    if (this.state.isDrawing && this.viewer) {
+      this.handleClick(movement);
+      return;
+    }
+
+    if (this.savedShapeCanInteract?.() && this.viewer) {
+      this.savedShapesMapOperationsService.handleLeftClick(
+        this.viewer,
+        movement.position,
+      );
+      this.savedShapeOnLeftClick?.();
     }
   };
 
@@ -862,11 +971,6 @@ export class DrawToolService implements OnDestroy {
 
     this.clearVertexEntities();
 
-    if (this.handler) {
-      this.handler.destroy();
-      this.handler = null;
-    }
-
     this.state = {
       type: MapOperationsEnum.DRAW_NONE,
       isDrawing: false,
@@ -920,6 +1024,10 @@ export class DrawToolService implements OnDestroy {
 
   readonly destroy = (): void => {
     this.cleanup();
+    if (this.handler) {
+      this.handler.destroy();
+      this.handler = null;
+    }
     this.ngOnDestroy();
     this.viewer = null;
   };

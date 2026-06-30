@@ -7,10 +7,12 @@ import {
   Cartesian3,
   Viewer,
   ScreenSpaceEventHandler,
+  ScreenSpaceEventType,
 } from 'cesium';
 
 import { DrawToolService } from '@services/draw-tool.service';
 import { EditShapeFacadeService } from '@services/edit-shape-facade.service';
+import { SavedShapesMapOperationsService } from '@services/saved-shapes-map-operations.service';
 import { MapOperationsEnum } from '@models/map-operations-enum';
 import { OutlineType } from '@models/draw-event.model';
 import { MapLocation } from '@models/location';
@@ -20,14 +22,8 @@ describe('DrawToolService', () => {
   let service: DrawToolService;
   let editShapeFacadeService: EditShapeFacadeService;
   let mockViewer: any;
-  let mockHandler: jasmine.SpyObj<ScreenSpaceEventHandler>;
 
   const createMockViewer = () => {
-    mockHandler = jasmine.createSpyObj('ScreenSpaceEventHandler', [
-      'setInputAction',
-      'destroy',
-    ]);
-
     const mockScene = {
       canvas: document.createElement('canvas'),
       camera: {
@@ -94,6 +90,66 @@ describe('DrawToolService', () => {
   describe('initialize', () => {
     it('should initialize with viewer', () => {
       expect(() => service.initialize(mockViewer)).not.toThrow();
+    });
+  });
+
+  describe('registerInteractionHandlers', () => {
+    it('should register the shared input actions through one helper', () => {
+      const handler = jasmine.createSpyObj('ScreenSpaceEventHandler', [
+        'setInputAction',
+      ]);
+      const handlers = {
+        leftDown: jasmine.createSpy('leftDown'),
+        mouseMove: jasmine.createSpy('mouseMove'),
+        leftUp: jasmine.createSpy('leftUp'),
+        leftClick: jasmine.createSpy('leftClick'),
+      };
+
+      (service as any).registerInteractionHandlers(handler, handlers);
+
+      expect(handler.setInputAction).toHaveBeenCalledTimes(4);
+      expect(handler.setInputAction).toHaveBeenCalledWith(
+        handlers.leftDown,
+        ScreenSpaceEventType.LEFT_DOWN,
+      );
+      expect(handler.setInputAction).toHaveBeenCalledWith(
+        handlers.mouseMove,
+        ScreenSpaceEventType.MOUSE_MOVE,
+      );
+      expect(handler.setInputAction).toHaveBeenCalledWith(
+        handlers.leftUp,
+        ScreenSpaceEventType.LEFT_UP,
+      );
+      expect(handler.setInputAction).toHaveBeenCalledWith(
+        handlers.leftClick,
+        ScreenSpaceEventType.LEFT_CLICK,
+      );
+    });
+  });
+
+  describe('handler lifecycle', () => {
+    it('should preserve the shared handler when canceling drawing', () => {
+      const sharedHandler = jasmine.createSpyObj('ScreenSpaceEventHandler', [
+        'destroy',
+      ]);
+      (service as any).handler = sharedHandler;
+
+      service.cancelDrawing();
+
+      expect(sharedHandler.destroy).not.toHaveBeenCalled();
+      expect((service as any).handler).toBe(sharedHandler);
+    });
+
+    it('should destroy the shared handler when destroy is called', () => {
+      const sharedHandler = jasmine.createSpyObj('ScreenSpaceEventHandler', [
+        'destroy',
+      ]);
+      (service as any).handler = sharedHandler;
+
+      service.destroy();
+
+      expect(sharedHandler.destroy).toHaveBeenCalled();
+      expect((service as any).handler).toBeNull();
     });
   });
 

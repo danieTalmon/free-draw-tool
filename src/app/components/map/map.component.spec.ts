@@ -7,6 +7,7 @@ import {
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { ReactiveFormsModule } from '@angular/forms';
 import { of } from 'rxjs';
+import { Cartesian2, Viewer } from 'cesium';
 
 import { MapComponent } from '@components/map/map.component';
 import { DrawToolService } from '@services/draw-tool.service';
@@ -62,6 +63,7 @@ describe('MapComponent', () => {
       'cancelDrawing',
       'destroy',
       'loadPositionsFromForm',
+      'bindSavedShapeInteractionHandlers',
     ]);
 
     const savedShapesSpy = jasmine.createSpyObj('SavedShapesService', [
@@ -105,18 +107,19 @@ describe('MapComponent', () => {
     const savedShapesMapOperationsSpy = jasmine.createSpyObj(
       'SavedShapesMapOperationsService',
       [
-        'bindDragInputActions',
         'findSavedShapeAtPosition',
         'startDragCandidate',
         'updateDrag',
         'finishDrag',
         'consumeSuppressedLeftClick',
         'resetDragState',
+        'handleLeftClick',
       ],
     );
     savedShapesMapOperationsSpy.consumeSuppressedLeftClick.and.returnValue(
       false,
     );
+    savedShapesMapOperationsSpy.handleLeftClick.and.returnValue(false);
 
     await TestBed.configureTestingModule({
       imports: [MapComponent, HttpClientTestingModule, ReactiveFormsModule],
@@ -391,6 +394,25 @@ describe('MapComponent', () => {
   });
 
   describe('Saved shape interaction in edit mode', () => {
+    it('should register saved-shape interaction handlers through drawToolService', () => {
+      component.viewer = {
+        scene: { canvas: document.createElement('canvas') },
+      } as any;
+
+      component['setupContextMenuHandler']();
+
+      expect(
+        drawToolService.bindSavedShapeInteractionHandlers,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        drawToolService.bindSavedShapeInteractionHandlers,
+      ).toHaveBeenCalledWith(
+        component.viewer,
+        jasmine.any(Function),
+        jasmine.any(Function),
+        jasmine.any(Function),
+      );
+    });
     it('should allow saved shape interaction when edit mode is enabled and no session is active', () => {
       component.isEditMode = true;
       component.currentDrawType = MapOperationsEnum.DRAW_NONE;
@@ -416,22 +438,26 @@ describe('MapComponent', () => {
       expect(component['canInteractWithSavedShapes']()).toBeFalse();
     });
 
-    it('should select a saved shape without opening context menu on left click while drawing', () => {
-      const savedShape = createMockSavedShape();
-      component.isEditMode = true;
-      component.currentDrawType = MapOperationsEnum.DRAW_POLYLINE;
-      component.contextMenuVisible = true;
-      component.contextMenuShape = savedShape;
-      component.viewer = { destroy: jasmine.createSpy('destroy') } as any;
-      savedShapesMapOperationsService.findSavedShapeAtPosition.and.returnValue(
-        savedShape,
-      );
+    it('should pass a close-context-menu callback to saved shape interaction binding', () => {
+      component.viewer = {
+        scene: { canvas: document.createElement('canvas') },
+        destroy: jasmine.createSpy('destroy'),
+      } as any;
+      spyOn(component, 'closeContextMenu');
 
-      component['handleSavedShapeLeftClick']({ x: 100, y: 80 } as any);
+      component['setupContextMenuHandler']();
 
-      expect(savedShapesService.selectShape).toHaveBeenCalledWith('test-shape');
-      expect(component.contextMenuVisible).toBeFalse();
-      expect(component.contextMenuShape).toBeNull();
+      expect(
+        drawToolService.bindSavedShapeInteractionHandlers,
+      ).toHaveBeenCalledTimes(1);
+
+      const callArgs =
+        drawToolService.bindSavedShapeInteractionHandlers.calls.mostRecent()
+          .args as [Viewer, () => boolean, () => void, () => void];
+
+      expect(callArgs[3]).toEqual(jasmine.any(Function));
+      callArgs[3]();
+      expect(component.closeContextMenu).toHaveBeenCalled();
     });
 
     it('should open context menu on right click while drawing', () => {
@@ -463,40 +489,6 @@ describe('MapComponent', () => {
 
       component['handleSavedShapeRightClick']({ x: 120, y: 90 } as any);
 
-      expect(component.contextMenuVisible).toBeTrue();
-      expect(component.contextMenuShape).toBe(savedShape);
-    });
-
-    it('should close context menu on left click of empty map area', () => {
-      component.contextMenuVisible = true;
-      component.contextMenuShape = createMockSavedShape();
-      component.viewer = { destroy: jasmine.createSpy('destroy') } as any;
-      savedShapesMapOperationsService.findSavedShapeAtPosition.and.returnValue(
-        null,
-      );
-
-      component['handleSavedShapeLeftClick']({ x: 0, y: 0 } as any);
-
-      expect(savedShapesService.selectShape).toHaveBeenCalledWith(null);
-      expect(component.contextMenuVisible).toBeFalse();
-      expect(component.contextMenuShape).toBeNull();
-    });
-
-    it('should suppress next left click after drag gesture', () => {
-      const savedShape = createMockSavedShape();
-      component.contextMenuVisible = true;
-      component.contextMenuShape = savedShape;
-      component.viewer = { destroy: jasmine.createSpy('destroy') } as any;
-      savedShapesMapOperationsService.consumeSuppressedLeftClick.and.returnValue(
-        true,
-      );
-
-      component['handleSavedShapeLeftClick']({ x: 50, y: 60 } as any);
-
-      expect(
-        savedShapesMapOperationsService.consumeSuppressedLeftClick,
-      ).toHaveBeenCalled();
-      expect(savedShapesService.selectShape).not.toHaveBeenCalled();
       expect(component.contextMenuVisible).toBeTrue();
       expect(component.contextMenuShape).toBe(savedShape);
     });

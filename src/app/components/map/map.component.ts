@@ -149,7 +149,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.contextMenuHandler = null;
     }
     this.savedShapesMapOperationsService.resetDragState();
-    if (this.viewer) {
+    if (this.viewer && typeof this.viewer.destroy === 'function') {
       this.viewer.destroy();
     }
   }
@@ -227,24 +227,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.viewer.scene.canvas,
     );
 
-    this.savedShapesMapOperationsService.bindDragInputActions(
-      this.contextMenuHandler,
+    this.drawToolService.bindSavedShapeInteractionHandlers(
       this.viewer,
       () => this.canInteractWithSavedShapes(),
       () => this.closeContextMenu(),
-    );
-
-    this.contextMenuHandler.setInputAction(
-      (movement: { position: Cartesian2 }) => {
-        this.ngZone.run(() => {
-          if (!this.canInteractWithSavedShapes()) {
-            return;
-          }
-
-          this.handleSavedShapeLeftClick(movement.position);
-        });
-      },
-      ScreenSpaceEventType.LEFT_CLICK,
+      () => this.closeContextMenu(),
     );
 
     // Listen for right-clicks on saved shapes whenever edit mode is enabled.
@@ -265,28 +252,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private canInteractWithSavedShapes(): boolean {
     // Suppress saved-shape drag/click when a drawing session is active (P-07 partial fix).
     return this.isEditMode && !this.drawingSessionService.isActive();
-  }
-
-  private handleSavedShapeLeftClick(position: Cartesian2): void {
-    if (!this.viewer) return;
-
-    if (this.savedShapesMapOperationsService.consumeSuppressedLeftClick()) {
-      return;
-    }
-
-    const savedShape =
-      this.savedShapesMapOperationsService.findSavedShapeAtPosition(
-        this.viewer,
-        position,
-      );
-    if (savedShape) {
-      // Left click only selects; the context menu opens on right click.
-      this.savedShapesService.selectShape(savedShape.shapeDto.id || null);
-      this.closeContextMenu();
-    } else {
-      this.savedShapesService.selectShape(null);
-      this.closeContextMenu();
-    }
   }
 
   private handleSavedShapeRightClick(position: Cartesian2): void {

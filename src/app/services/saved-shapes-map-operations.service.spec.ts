@@ -128,6 +128,21 @@ describe('SavedShapesMapOperationsService', () => {
     expect(service).toBeTruthy();
   });
 
+  it('should select the shape as soon as drag starts', () => {
+    const dto = createDto();
+    const viewer = createViewerStub();
+
+    savedShapesService.getShapeByEntity.and.returnValue({
+      entity: {} as any,
+      shapeDto: dto,
+    });
+
+    const started = service.startDragCandidate(viewer, new Cartesian2(10, 10));
+
+    expect(started).toBeTrue();
+    expect(savedShapesService.selectShape).toHaveBeenCalledWith('shape-1');
+  });
+
   it('should suppress one left click after drag threshold is crossed', () => {
     const dto = createDto();
     const viewer = createViewerStub();
@@ -197,28 +212,19 @@ describe('SavedShapesMapOperationsService', () => {
     expect(window.alert).toHaveBeenCalled();
   });
 
-  it('should bind drag setInputAction handlers in service', () => {
-    const handler = {
-      setInputAction: jasmine.createSpy('setInputAction'),
-    } as any;
-    const canInteract = jasmine.createSpy('canInteract').and.returnValue(true);
-    const onStarted = jasmine.createSpy('onStarted');
+  it('should select the saved shape for a left click without using the UI layer', () => {
+    const dto = createDto();
+    const viewer = createViewerStub();
 
-    service.bindDragInputActions(handler, null, canInteract, onStarted);
+    savedShapesService.getShapeByEntity.and.returnValue({
+      entity: {} as any,
+      shapeDto: dto,
+    });
 
-    expect(handler.setInputAction).toHaveBeenCalledTimes(3);
-    expect(handler.setInputAction).toHaveBeenCalledWith(
-      jasmine.any(Function),
-      ScreenSpaceEventType.LEFT_DOWN,
-    );
-    expect(handler.setInputAction).toHaveBeenCalledWith(
-      jasmine.any(Function),
-      ScreenSpaceEventType.MOUSE_MOVE,
-    );
-    expect(handler.setInputAction).toHaveBeenCalledWith(
-      jasmine.any(Function),
-      ScreenSpaceEventType.LEFT_UP,
-    );
+    const handled = service.handleLeftClick(viewer, new Cartesian2(10, 10));
+
+    expect(handled).toBeTrue();
+    expect(savedShapesService.selectShape).toHaveBeenCalledWith('shape-1');
   });
 
   it('should sync form points when dragged shape id matches form shape id', () => {

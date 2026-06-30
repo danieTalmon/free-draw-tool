@@ -202,9 +202,6 @@ export class SavedShapesService implements OnDestroy {
     return bestMatch;
   }
 
-  /**
-   * Select a shape
-   */
   selectShape(shapeId: string | null): void {
     if (shapeId === null) {
       this._selectedShape$.next(null);

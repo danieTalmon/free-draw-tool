@@ -39,38 +39,8 @@ export class SavedShapesMapOperationsService {
   private dragSession: SavedShapeDragSession | null = null;
   private suppressNextLeftClick = false;
 
-  bindDragInputActions(
-    handler: ScreenSpaceEventHandler,
-    viewer: Viewer | null,
-    canInteract: () => boolean,
-    onDragStarted?: () => void,
-  ): void {
-    handler.setInputAction((movement: { position: Cartesian2 }) => {
-      if (!canInteract()) {
-        return;
-      }
-
-      const started = this.startDragCandidate(viewer, movement.position);
-      if (started) {
-        onDragStarted?.();
-      }
-    }, ScreenSpaceEventType.LEFT_DOWN);
-
-    handler.setInputAction((movement: { endPosition: Cartesian2 }) => {
-      if (!canInteract()) {
-        return;
-      }
-
-      this.updateDrag(viewer, movement.endPosition);
-    }, ScreenSpaceEventType.MOUSE_MOVE);
-
-    handler.setInputAction(() => {
-      if (!canInteract()) {
-        return;
-      }
-
-      this.finishDrag();
-    }, ScreenSpaceEventType.LEFT_UP);
+  selectShape(shapeId: string | null): void {
+    this.savedShapesService.selectShape(shapeId);
   }
 
   findSavedShapeAtPosition(
@@ -113,6 +83,8 @@ export class SavedShapesMapOperationsService {
       startScreenPosition: new Cartesian2(position.x, position.y),
       hasDragged: false,
     };
+
+    this.savedShapesService.selectShape(shapeId);
 
     return true;
   }
@@ -182,6 +154,21 @@ export class SavedShapesMapOperationsService {
         }
       },
     });
+  }
+
+  handleLeftClick(viewer: Viewer | null, position: Cartesian2): boolean {
+    if (this.consumeSuppressedLeftClick()) {
+      return true;
+    }
+
+    const savedShape = this.findSavedShapeAtPosition(viewer, position);
+    if (savedShape) {
+      this.savedShapesService.selectShape(savedShape.shapeDto.id || null);
+      return true;
+    }
+
+    this.savedShapesService.selectShape(null);
+    return false;
   }
 
   consumeSuppressedLeftClick(): boolean {
